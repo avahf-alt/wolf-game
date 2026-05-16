@@ -6,9 +6,12 @@ const TERRAIN_SEGS = 120;
 const TREE_COUNT   = 900;
 const GRASS_COUNT  = 4000;
 const ROCK_COUNT   = 180;
-const DEER_COUNT   = 14;
-const RABBIT_COUNT = 22;
-const DAY_LENGTH   = 240;  // seconds per full day
+const DEER_COUNT      = 14;
+const RABBIT_COUNT    = 22;
+const DAY_LENGTH      = 240;  // seconds per full day
+const BOND_RANGE      = 4.5;
+const GESTATION_DAYS  = 2;    // in-game days until pups born
+const PUP_GROW_DAYS   = 5;    // in-game days to reach full size
 const WOLF_SPEED   = 7.5;
 const SPRINT_MULT  = 2.0;
 const GRAVITY      = 28;
@@ -349,6 +352,271 @@ const wolf = makeWolf(0x6a6560);
 wolf.scale.setScalar(1.15);
 scene.add(wolf);
 
+// ─── Mate Wolf ────────────────────────────────────────────────────────────────
+const mateMesh = makeWolf(0xb0a090); // lighter tan female
+mateMesh.scale.setScalar(1.0);
+// Spawn her away from origin
+const mateStartX = 80 + Math.random()*40;
+const mateStartZ = 60 + Math.random()*40;
+mateMesh.position.set(mateStartX, terrainY(mateStartX, mateStartZ), mateStartZ);
+scene.add(mateMesh);
+
+// Heart particle pool
+const heartMat   = new THREE.MeshBasicMaterial({ color: 0xff4488, side: THREE.DoubleSide });
+const heartGeo   = new THREE.PlaneGeometry(0.35, 0.35);
+const hearts     = [];
+for (let i = 0; i < 8; i++) {
+  const h = new THREE.Mesh(heartGeo, heartMat.clone());
+  h.visible = false;
+  h.userData = { life: 0, vx: 0, vy: 0 };
+  scene.add(h);
+  hearts.push(h);
+}
+function spawnHearts(pos) {
+  hearts.forEach(h => {
+    if (!h.visible) {
+      h.visible = true;
+      h.position.copy(pos).add(new THREE.Vector3((Math.random()-0.5)*1.5, 1.2+Math.random()*0.6, (Math.random()-0.5)*1.5));
+      h.userData.life = 1.4;
+      h.userData.vy   = 1.2 + Math.random()*0.8;
+      h.userData.vx   = (Math.random()-0.5)*0.6;
+    }
+  });
+}
+function updateHearts(dt) {
+  hearts.forEach(h => {
+    if (!h.visible) return;
+    h.userData.life -= dt;
+    h.position.y    += h.userData.vy * dt;
+    h.position.x    += h.userData.vx * dt;
+    h.material.opacity = Math.max(0, h.userData.life / 1.4);
+    h.material.transparent = true;
+    h.lookAt(camera.position);
+    if (h.userData.life <= 0) h.visible = false;
+  });
+}
+
+const mate = {
+  mesh:        mateMesh,
+  state:       'wander',  // wander | follow | approach | idle
+  target:      new THREE.Vector3(),
+  timer:       Math.random() * 6,
+  legPhase:    0,
+  approachTimer: 0,
+};
+
+function updateMate(dt) {
+  const pos  = mate.mesh.position;
+  const dist = pos.distanceTo(player.pos);
+
+  // Approach player when howled (set from howl fn), or when bond >= 1
+  if (packState.bondLevel > 0 && dist > 12) {
+    mate.state = 'follow';
+  }
+
+  mate.timer -= dt;
+
+  let dx = 0, dz = 0, spd = 3.8;
+
+  if (mate.state === 'follow') {
+    const tx = player.pos.x + (Math.random()-0.5)*4;
+    const tz = player.pos.z + (Math.random()-0.5)*4;
+    dx = tx - pos.x; dz = tz - pos.z;
+    const l = Math.sqrt(dx*dx+dz*dz);
+    if (l < 2.5) { dx=0; dz=0; }
+    else { dx/=l; dz/=l; }
+  } else if (mate.state === 'wander') {
+    if (mate.timer < 0) {
+      mate.timer = 3 + Math.random()*6;
+      const a = Math.random()*Math.PI*2;
+      const r = 10 + Math.random()*30;
+      mate.target.set(
+        Math.max(-WORLD_SIZE/2+5, Math.min(WORLD_SIZE/2-5, pos.x + Math.cos(a)*r)),
+        0,
+        Math.max(-WORLD_SIZE/2+5, Math.min(WORLD_SIZE/2-5, pos.z + Math.sin(a)*r))
+      );
+    }
+    dx = mate.target.x - pos.x; dz = mate.target.z - pos.z;
+    const l = Math.sqrt(dx*dx+dz*dz);
+    if (l < 1) { dx=0; dz=0; }
+    else { dx/=l; dz/=l; }
+  }
+
+  if (dx !== 0 || dz !== 0) {
+    pos.x += dx*spd*dt;
+    pos.z += dz*spd*dt;
+    pos.y  = Math.max(terrainY(pos.x, pos.z), 0.35);
+    mate.mesh.rotation.y = Math.atan2(dx, dz);
+    mate.legPhase += spd*dt*3.5;
+    ['leg0','leg2'].forEach(n=>{
+      const l = mate.mesh.getObjectByName(n);
+      if (l) l.rotation.x = Math.sin(mate.legPhase)*0.6;
+    });
+    ['leg1','leg3'].forEach(n=>{
+      const l = mate.mesh.getObjectByName(n);
+      if (l) l.rotation.x = -Math.sin(mate.legPhase)*0.6;
+    });
+  }
+  // Tail wag near player
+  const tail = mate.mesh.getObjectByName('tail');
+  if (tail) tail.rotation.y = dist < 10 ? Math.sin(Date.now()*0.006)*0.5 : 0;
+}
+
+// ─── Pack / Breeding State ────────────────────────────────────────────────────
+const packState = {
+  bondLevel:       0,    // 0-3, then mated
+  mated:           false,
+  pregnant:        false,
+  gestationTimer:  0,    // seconds remaining
+  pups:            [],   // array of pup objects
+  eCooldown:       0,
+};
+
+function updatePackLabel() {
+  const alive = packState.pups.filter(p=>!p.dead).length;
+  if (!packState.mated) {
+    if (packState.bondLevel === 0) packLabel.textContent = 'Pack: Lone Wolf';
+    else packLabel.textContent = `Pack: Bonding (${packState.bondLevel}/3)`;
+  } else {
+    const parts = ['You', 'Mate'];
+    if (alive > 0) parts.push(`${alive} pup${alive>1?'s':''}`);
+    packLabel.textContent = 'Pack: ' + parts.join(' + ');
+  }
+}
+
+// ─── Pup ──────────────────────────────────────────────────────────────────────
+function spawnPup() {
+  // Random pup color — blend between parents
+  const colors = [0x8a8070, 0x6a6560, 0xb0a090, 0x707068, 0x909080];
+  const col    = colors[Math.floor(Math.random()*colors.length)];
+  const mesh   = makeWolf(col);
+  const startScale = 0.45;
+  mesh.scale.setScalar(startScale);
+  // Near the mate
+  const ox = (Math.random()-0.5)*3, oz = (Math.random()-0.5)*3;
+  const px = mateMesh.position.x + ox;
+  const pz = mateMesh.position.z + oz;
+  mesh.position.set(px, terrainY(px,pz), pz);
+  scene.add(mesh);
+
+  const pup = {
+    mesh,
+    age:       0,         // in-game days
+    legPhase:  0,
+    dead:      false,
+    followOffset: new THREE.Vector3((Math.random()-0.5)*3, 0, (Math.random()-0.5)*3),
+  };
+  packState.pups.push(pup);
+  return pup;
+}
+
+function updatePups(dt) {
+  const dayFrac = dt / DAY_LENGTH;
+  packState.pups.forEach(pup => {
+    if (pup.dead) return;
+    pup.age += dayFrac;
+
+    // Grow towards full size
+    const growT   = Math.min(1, pup.age / PUP_GROW_DAYS);
+    const s       = 0.45 + growT * 0.7;
+    pup.mesh.scale.setScalar(s);
+
+    // Follow player with individual offset
+    const target = new THREE.Vector3()
+      .copy(player.pos)
+      .add(pup.followOffset);
+    const dx = target.x - pup.mesh.position.x;
+    const dz = target.z - pup.mesh.position.z;
+    const dist = Math.sqrt(dx*dx+dz*dz);
+
+    if (dist > 1.5) {
+      const spd = WOLF_SPEED * 0.8 * (1 - growT*0.2);
+      const ndx = dx/dist, ndz = dz/dist;
+      pup.mesh.position.x += ndx*spd*dt;
+      pup.mesh.position.z += ndz*spd*dt;
+      pup.mesh.position.y  = Math.max(terrainY(pup.mesh.position.x, pup.mesh.position.z), 0.2);
+      pup.mesh.rotation.y  = Math.atan2(ndx, ndz);
+      pup.legPhase += spd*dt*4;
+      ['leg0','leg2'].forEach(n=>{
+        const l = pup.mesh.getObjectByName(n); if(l) l.rotation.x = Math.sin(pup.legPhase)*0.7;
+      });
+      ['leg1','leg3'].forEach(n=>{
+        const l = pup.mesh.getObjectByName(n); if(l) l.rotation.x = -Math.sin(pup.legPhase)*0.7;
+      });
+    }
+    // Tail wag always for pups
+    const tail = pup.mesh.getObjectByName('tail');
+    if (tail) tail.rotation.y = Math.sin(Date.now()*0.008 + pup.age*10)*0.6;
+  });
+}
+
+// ─── Bond / Mate (F key) ──────────────────────────────────────────────────────
+let fWasDown = false;
+function tryBondOrMate() {
+  if (packState.eCooldown > 0) return;
+  const dist = mateMesh.position.distanceTo(player.pos);
+  if (dist > BOND_RANGE) return;
+
+  packState.eCooldown = 1.8;
+
+  if (!packState.mated) {
+    if (packState.bondLevel < 3) {
+      packState.bondLevel++;
+      spawnHearts(mateMesh.position);
+      const msgs = ['', 'You nuzzle. A connection forms.', 'She leans close. Trust grows.', 'Your bond is complete.'];
+      showNotif(msgs[packState.bondLevel]);
+      if (packState.bondLevel === 3) {
+        packState.mated = true;
+        mate.state = 'follow';
+        setTimeout(() => showNotif('Press F near your mate to start a litter.'), 3200);
+      }
+      updatePackLabel();
+    }
+  } else if (packState.mated && !packState.pregnant) {
+    // Need to be fed enough
+    if (player.hunger < 55) {
+      showNotif('You are too hungry. Hunt first.'); return;
+    }
+    if (player.thirst < 40) {
+      showNotif('You are too thirsty. Drink first.'); return;
+    }
+    packState.pregnant     = true;
+    packState.gestationTimer = GESTATION_DAYS * DAY_LENGTH;
+    spawnHearts(mateMesh.position);
+    spawnHearts(wolf.position);
+    showNotif('A new litter is on the way...');
+    updatePackLabel();
+  } else if (packState.pregnant) {
+    showNotif('Pups are on the way. Be patient.');
+  } else {
+    showNotif('Your mate is by your side.');
+  }
+}
+
+const pupLabel = document.getElementById('pup-label');
+
+// Gestation tick — called in main loop
+function tickGestation(dt) {
+  if (!packState.pregnant) {
+    pupLabel.style.display = 'none';
+    return;
+  }
+  packState.gestationTimer -= dt;
+  const daysLeft = Math.max(0, packState.gestationTimer / DAY_LENGTH);
+  pupLabel.style.display = 'block';
+  pupLabel.textContent   = `Expecting pups · ${daysLeft.toFixed(1)}d`;
+
+  if (packState.gestationTimer <= 0) {
+    packState.pregnant = false;
+    pupLabel.style.display = 'none';
+    const count = 2 + Math.floor(Math.random()*3); // 2–4 pups
+    for (let i=0; i<count; i++) spawnPup();
+    spawnHearts(mateMesh.position);
+    showNotif(`${count} pups born! Your pack grows.`);
+    updatePackLabel();
+  }
+}
+
 // ─── Deer ────────────────────────────────────────────────────────────────────
 function makeDeer() {
   const g = new THREE.Group();
@@ -676,6 +944,9 @@ function triggerHowl() {
   void howlRing.offsetWidth;
   howlRing.classList.add('active');
   showNotif('You howl into the darkness...');
+  // Mate comes closer when you howl
+  mate.state = 'follow';
+  mate.timer = 10;
   // Scare animals
   animals.forEach(a => {
     if (!a.dead && a.mesh.position.distanceTo(player.pos) < HOWL_RADIUS) {
@@ -811,6 +1082,21 @@ function updatePlayer(dt) {
   // E — attack or drink
   if (keys['KeyE']) tryAttack();
 
+  // F — bond / mate
+  packState.eCooldown = Math.max(0, packState.eCooldown - dt);
+  if (keys['KeyF'] && !fWasDown) { fWasDown = true; tryBondOrMate(); }
+  if (!keys['KeyF']) fWasDown = false;
+
+  // Proximity prompt for mate
+  const mateDist = mateMesh.position.distanceTo(player.pos);
+  if (mateDist < BOND_RANGE && !packState.mated && packState.bondLevel < 3 && notifTimer <= 0) {
+    notifEl.textContent = 'Press F to bond with her';
+    notifEl.classList.add('show');
+  } else if (mateDist < BOND_RANGE && packState.mated && !packState.pregnant && notifTimer <= 0) {
+    notifEl.textContent = 'Press F to start a litter';
+    notifEl.classList.add('show');
+  }
+
   // Wolf mesh
   wolf.position.copy(player.pos);
   wolf.position.y -= 0.9;
@@ -874,7 +1160,15 @@ function respawn() {
   player.pos.set(0, terrainY(0,0)+1.8, 0);
   player.vel.set(0,0,0);
   killsLabel.textContent = 'Kills: 0';
-  packLabel.textContent  = 'Pack: Lone Wolf';
+  // Reset pack
+  packState.bondLevel = 0; packState.mated = false;
+  packState.pregnant  = false; packState.gestationTimer = 0;
+  packState.pups.forEach(p => scene.remove(p.mesh));
+  packState.pups.length = 0;
+  mateMesh.position.set(mateStartX, terrainY(mateStartX, mateStartZ), mateStartZ);
+  mate.state = 'wander';
+  pupLabel.style.display = 'none';
+  updatePackLabel();
   deathScreen.classList.remove('show');
   // Revive animals
   animals.forEach(a => {
@@ -914,6 +1208,10 @@ function loop(now) {
   if (!player.dead) {
     updatePlayer(dt);
     animals.forEach(a => a.update(dt, player.pos));
+    updateMate(dt);
+    updatePups(dt);
+    updateHearts(dt);
+    tickGestation(dt);
     updateSky(dt);
 
     // Day count
