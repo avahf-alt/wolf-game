@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wolf — Survive the Wild</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; font-family: 'Georgia', serif; }
+    #canvas { display: block; }
+
+    #hud {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none; z-index: 10;
+    }
+
+    /* Crosshair */
+    #crosshair {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.7);
+      box-shadow: 0 0 4px rgba(0,0,0,0.8);
+    }
+
+    /* Vitals */
+    #vitals {
+      position: absolute; bottom: 28px; left: 32px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .bar-wrap { display: flex; align-items: center; gap: 10px; }
+    .bar-label {
+      color: rgba(255,255,255,0.75); font-size: 11px;
+      letter-spacing: 1.5px; text-transform: uppercase;
+      width: 52px; text-align: right;
+    }
+    .bar-bg {
+      width: 130px; height: 7px; background: rgba(0,0,0,0.5);
+      border-radius: 4px; border: 1px solid rgba(255,255,255,0.15);
+    }
+    .bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+    #health-fill  { background: linear-gradient(90deg,#c0392b,#e74c3c); }
+    #hunger-fill  { background: linear-gradient(90deg,#d35400,#e67e22); }
+    #stamina-fill { background: linear-gradient(90deg,#1a6fa8,#3498db); }
+    #thirst-fill  { background: linear-gradient(90deg,#1e7a5e,#27ae60); }
+
+    /* Pack / score */
+    #info-top {
+      position: absolute; top: 20px; right: 24px;
+      color: rgba(255,255,255,0.8); font-size: 13px;
+      text-align: right; line-height: 1.8;
+      text-shadow: 1px 1px 3px #000;
+    }
+    #info-top span { display: block; }
+
+    /* Day indicator */
+    #day-wrap {
+      position: absolute; top: 20px; left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255,255,255,0.7); font-size: 12px;
+      letter-spacing: 2px; text-transform: uppercase;
+      text-shadow: 1px 1px 4px #000;
+    }
+
+    /* Notifications */
+    #notif {
+      position: absolute; top: 60px; left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255,230,140,0.95); font-size: 14px;
+      text-shadow: 1px 1px 4px #000; letter-spacing: 1px;
+      text-align: center; pointer-events: none;
+      opacity: 0; transition: opacity 0.4s;
+    }
+    #notif.show { opacity: 1; }
+
+    /* Controls overlay */
+    #controls {
+      position: absolute; bottom: 28px; right: 24px;
+      color: rgba(255,255,255,0.45); font-size: 11px;
+      line-height: 1.9; text-align: right;
+      text-shadow: 1px 1px 2px #000;
+    }
+    #controls span { display: block; }
+
+    /* Howl indicator */
+    #howl-ring {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%,-50%);
+      width: 80px; height: 80px;
+      border-radius: 50%;
+      border: 3px solid rgba(255,255,255,0.8);
+      opacity: 0; transition: opacity 0.3s;
+      animation: none;
+    }
+    #howl-ring.active {
+      opacity: 1;
+      animation: ripple 0.7s ease-out forwards;
+    }
+    @keyframes ripple {
+      from { transform: translate(-50%,-50%) scale(0.6); opacity:1; }
+      to   { transform: translate(-50%,-50%) scale(3);   opacity:0; }
+    }
+
+    /* Blood vignette */
+    #vignette {
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at center, transparent 60%, rgba(120,0,0,0) 100%);
+      pointer-events: none; transition: background 0.4s;
+    }
+    #vignette.hurt {
+      background: radial-gradient(ellipse at center, transparent 40%, rgba(120,0,0,0.55) 100%);
+    }
+
+    /* Splash screen */
+    #splash {
+      position: fixed; inset: 0;
+      background: radial-gradient(ellipse at center, #0d1a0d 0%, #000 100%);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      z-index: 100; transition: opacity 1s;
+    }
+    #splash h1 {
+      font-size: clamp(48px, 8vw, 96px);
+      color: #e0d4b0; letter-spacing: 6px;
+      text-transform: uppercase;
+      text-shadow: 0 0 40px rgba(255,200,80,0.4);
+      margin-bottom: 16px;
+    }
+    #splash p {
+      color: rgba(255,255,255,0.5); font-size: 14px;
+      letter-spacing: 3px; margin-bottom: 48px;
+    }
+    #splash button {
+      padding: 14px 48px; font-size: 16px; letter-spacing: 3px;
+      background: transparent; border: 2px solid rgba(255,255,255,0.5);
+      color: #fff; cursor: pointer; text-transform: uppercase;
+      transition: all 0.3s; font-family: inherit;
+    }
+    #splash button:hover {
+      background: rgba(255,255,255,0.1);
+      border-color: rgba(255,255,255,0.9);
+    }
+    #splash.hidden { opacity: 0; pointer-events: none; }
+
+    /* Death screen */
+    #death {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.85);
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center;
+      z-index: 99;
+    }
+    #death.show { display: flex; }
+    #death h2 { color: #c0392b; font-size: 52px; letter-spacing: 4px; margin-bottom: 12px; }
+    #death p  { color: rgba(255,255,255,0.5); letter-spacing: 2px; margin-bottom: 36px; }
+    #death button {
+      padding: 12px 40px; font-size: 14px; letter-spacing: 3px;
+      background: transparent; border: 2px solid #c0392b;
+      color: #c0392b; cursor: pointer; text-transform: uppercase;
+      transition: all 0.3s; font-family: inherit;
+    }
+    #death button:hover { background: rgba(192,57,43,0.2); }
+  </style>
+</head>
+<body>
+
+<!-- Splash -->
+<div id="splash">
+  <h1>WOLF</h1>
+  <p>Survive · Hunt · Howl</p>
+  <button id="start-btn">Enter the Wild</button>
+</div>
+
+<!-- Death -->
+<div id="death">
+  <h2>YOU DIED</h2>
+  <p id="death-reason">Starvation claimed your spirit</p>
+  <button id="respawn-btn">Rise Again</button>
+</div>
+
+<!-- Main canvas -->
+<canvas id="canvas"></canvas>
+
+<!-- HUD -->
+<div id="hud">
+  <div id="crosshair"></div>
+  <div id="vignette"></div>
+  <div id="howl-ring"></div>
+  <div id="notif"></div>
+
+  <div id="day-wrap">
+    <span id="day-label">Dawn · Day 1</span>
+  </div>
+
+  <div id="info-top">
+    <span id="kills-label">Kills: 0</span>
+    <span id="pack-label">Pack: Lone Wolf</span>
+  </div>
+
+  <div id="vitals">
+    <div class="bar-wrap">
+      <span class="bar-label">Health</span>
+      <div class="bar-bg"><div class="bar-fill" id="health-fill"  style="width:100%"></div></div>
+    </div>
+    <div class="bar-wrap">
+      <span class="bar-label">Hunger</span>
+      <div class="bar-bg"><div class="bar-fill" id="hunger-fill"  style="width:100%"></div></div>
+    </div>
+    <div class="bar-wrap">
+      <span class="bar-label">Thirst</span>
+      <div class="bar-bg"><div class="bar-fill" id="thirst-fill"  style="width:100%"></div></div>
+    </div>
+    <div class="bar-wrap">
+      <span class="bar-label">Stamina</span>
+      <div class="bar-bg"><div class="bar-fill" id="stamina-fill" style="width:100%"></div></div>
+    </div>
+  </div>
+
+  <div id="controls">
+    <span>W A S D — Move</span>
+    <span>SHIFT — Sprint</span>
+    <span>SPACE — Howl</span>
+    <span>E — Attack / Drink</span>
+    <span>Mouse — Look</span>
+  </div>
+</div>
+
+<script type="module" src="game.js"></script>
+</body>
+</html>
