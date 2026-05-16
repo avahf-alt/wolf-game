@@ -83,6 +83,83 @@
     }
     #controls span { display: block; }
 
+    /* ── Mobile touch controls ── */
+    #touch-controls {
+      display: none;
+      position: absolute; inset: 0;
+      pointer-events: none;
+    }
+
+    /* Joystick */
+    #joystick-zone {
+      position: absolute; left: 24px; bottom: 40px;
+      width: 130px; height: 130px;
+      pointer-events: all;
+    }
+    #joystick-base {
+      position: absolute; inset: 0;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.08);
+      border: 2px solid rgba(255,255,255,0.2);
+    }
+    #joystick-knob {
+      position: absolute;
+      width: 52px; height: 52px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.28);
+      border: 2px solid rgba(255,255,255,0.5);
+      top: 50%; left: 50%;
+      transform: translate(-50%,-50%);
+      transition: none;
+    }
+
+    /* Right-side look zone */
+    #look-zone {
+      position: absolute; right: 0; top: 0;
+      width: 55%; height: 100%;
+      pointer-events: all;
+    }
+
+    /* Action buttons */
+    .touch-btn {
+      position: absolute;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.12);
+      border: 2px solid rgba(255,255,255,0.3);
+      color: rgba(255,255,255,0.85);
+      font-size: 11px; font-family: 'Georgia', serif;
+      letter-spacing: 0.5px; text-align: center;
+      display: flex; align-items: center; justify-content: center;
+      pointer-events: all;
+      user-select: none; -webkit-user-select: none;
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+    .touch-btn:active, .touch-btn.pressed {
+      background: rgba(255,255,255,0.28);
+      border-color: rgba(255,255,255,0.7);
+    }
+
+    #btn-attack {
+      width: 72px; height: 72px;
+      right: 28px; bottom: 52px;
+      font-size: 13px;
+    }
+    #btn-howl {
+      width: 56px; height: 56px;
+      right: 112px; bottom: 76px;
+    }
+    #btn-bond {
+      width: 56px; height: 56px;
+      right: 112px; bottom: 20px;
+      color: rgba(255,180,200,0.9);
+      border-color: rgba(255,150,180,0.4);
+    }
+    #btn-sprint {
+      width: 56px; height: 56px;
+      right: 28px; bottom: 136px;
+    }
+
     /* Howl indicator */
     #howl-ring {
       position: absolute; top: 50%; left: 50%;
@@ -218,13 +295,29 @@
     </div>
   </div>
 
-  <div id="controls">
+  <div id="controls" id="kb-controls">
     <span>W A S D — Move</span>
     <span>SHIFT — Sprint</span>
     <span>SPACE — Howl</span>
     <span>E — Attack / Drink</span>
     <span>F — Bond / Mate</span>
     <span>Mouse — Look</span>
+  </div>
+
+  <!-- Mobile touch controls -->
+  <div id="touch-controls">
+    <!-- Left: joystick -->
+    <div id="joystick-zone">
+      <div id="joystick-base"></div>
+      <div id="joystick-knob"></div>
+    </div>
+    <!-- Right: look zone (transparent, just for touch tracking) -->
+    <div id="look-zone"></div>
+    <!-- Action buttons -->
+    <div class="touch-btn" id="btn-attack">BITE</div>
+    <div class="touch-btn" id="btn-howl">HOWL</div>
+    <div class="touch-btn" id="btn-bond">BOND ♥</div>
+    <div class="touch-btn" id="btn-sprint">RUN</div>
   </div>
 </div>
 

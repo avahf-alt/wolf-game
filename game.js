@@ -49,7 +49,8 @@ function terrainY(x, z) {
 // ─── Scene Setup ─────────────────────────────────────────────────────────────
 const canvas   = document.getElementById('canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
@@ -838,10 +839,107 @@ document.addEventListener('mousemove', e => {
   mouseY += e.movementY * 0.0018;
   mouseY  = Math.max(-0.5, Math.min(0.7, mouseY));
 });
-canvas.addEventListener('click', () => { if (!pointerLocked) canvas.requestPointerLock(); });
+canvas.addEventListener('click', () => { if (!pointerLocked && !isMobile) canvas.requestPointerLock(); });
 document.addEventListener('pointerlockchange', () => {
   pointerLocked = document.pointerLockElement === canvas;
 });
+
+// ─── Mobile / Touch Detection ─────────────────────────────────────────────────
+if (isMobile) {
+  document.getElementById('touch-controls').style.display = 'block';
+  document.getElementById('controls').style.display       = 'none';
+  // Prevent default touch scroll/zoom
+  document.body.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+}
+
+// ─── Virtual Joystick ─────────────────────────────────────────────────────────
+const joystickZone = document.getElementById('joystick-zone');
+const joystickKnob = document.getElementById('joystick-knob');
+const joystick = { active: false, id: -1, startX: 0, startZ: 0, dx: 0, dy: 0 };
+
+const JOY_RADIUS = 45; // max knob travel in px
+
+joystickZone.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const t = e.changedTouches[0];
+  const r = joystickZone.getBoundingClientRect();
+  joystick.active = true;
+  joystick.id     = t.identifier;
+  joystick.startX = r.left + r.width  / 2;
+  joystick.startZ = r.top  + r.height / 2;
+  joystick.dx = 0; joystick.dy = 0;
+}, { passive: false });
+
+joystickZone.addEventListener('touchmove', e => {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    if (t.identifier !== joystick.id) continue;
+    let dx = t.clientX - joystick.startX;
+    let dy = t.clientY - joystick.startZ;
+    const len = Math.sqrt(dx*dx+dy*dy);
+    if (len > JOY_RADIUS) { dx = dx/len*JOY_RADIUS; dy = dy/len*JOY_RADIUS; }
+    joystick.dx = dx / JOY_RADIUS;
+    joystick.dy = dy / JOY_RADIUS;
+    joystickKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+  }
+}, { passive: false });
+
+const endJoystick = e => {
+  for (const t of e.changedTouches) {
+    if (t.identifier !== joystick.id) continue;
+    joystick.active = false; joystick.dx = 0; joystick.dy = 0;
+    joystickKnob.style.transform = 'translate(-50%,-50%)';
+  }
+};
+joystickZone.addEventListener('touchend',    endJoystick, { passive: false });
+joystickZone.addEventListener('touchcancel', endJoystick, { passive: false });
+
+// ─── Touch Look (right side of screen) ────────────────────────────────────────
+const lookZone = document.getElementById('look-zone');
+const look = { active: false, id: -1, lastX: 0, lastY: 0 };
+
+lookZone.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (look.active) return;
+  const t = e.changedTouches[0];
+  look.active = true; look.id = t.identifier;
+  look.lastX  = t.clientX; look.lastY = t.clientY;
+}, { passive: false });
+
+lookZone.addEventListener('touchmove', e => {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    if (t.identifier !== look.id) continue;
+    const dx = t.clientX - look.lastX;
+    const dy = t.clientY - look.lastY;
+    mouseX += dx * 0.004;
+    mouseY += dy * 0.004;
+    mouseY  = Math.max(-0.5, Math.min(0.7, mouseY));
+    look.lastX = t.clientX; look.lastY = t.clientY;
+  }
+}, { passive: false });
+
+const endLook = e => {
+  for (const t of e.changedTouches) {
+    if (t.identifier === look.id) look.active = false;
+  }
+};
+lookZone.addEventListener('touchend',    endLook, { passive: false });
+lookZone.addEventListener('touchcancel', endLook, { passive: false });
+
+// ─── Touch Action Buttons ──────────────────────────────────────────────────────
+const touchState = { attack: false, howl: false, bond: false, sprint: false };
+
+function bindBtn(id, key) {
+  const el = document.getElementById(id);
+  el.addEventListener('touchstart', e => { e.preventDefault(); touchState[key] = true;  el.classList.add('pressed');    }, { passive: false });
+  el.addEventListener('touchend',   e => { e.preventDefault(); touchState[key] = false; el.classList.remove('pressed'); }, { passive: false });
+  el.addEventListener('touchcancel',e => { touchState[key] = false; el.classList.remove('pressed'); }, { passive: false });
+}
+bindBtn('btn-attack', 'attack');
+bindBtn('btn-howl',   'howl');
+bindBtn('btn-bond',   'bond');
+bindBtn('btn-sprint', 'sprint');
 
 // ─── HUD refs ─────────────────────────────────────────────────────────────────
 const healthFill  = document.getElementById('health-fill');
@@ -1004,8 +1102,8 @@ function updatePlayer(dt) {
   const fwd  = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
   const right= new THREE.Vector3( Math.cos(player.yaw), 0, -Math.sin(player.yaw));
 
-  const sprinting = keys['ShiftLeft'] || keys['ShiftRight'];
-  const moving    = keys['KeyW'] || keys['KeyS'] || keys['KeyA'] || keys['KeyD'];
+  const sprinting = keys['ShiftLeft'] || keys['ShiftRight'] || touchState.sprint;
+  const moving    = keys['KeyW'] || keys['KeyS'] || keys['KeyA'] || keys['KeyD'] || joystick.active;
 
   let spd = WOLF_SPEED * (sprinting && player.stamina > 0 ? SPRINT_MULT : 1.0);
   let move = new THREE.Vector3();
@@ -1014,6 +1112,12 @@ function updatePlayer(dt) {
   if (keys['KeyS']) move.addScaledVector(fwd,-1);
   if (keys['KeyD']) move.addScaledVector(right,1);
   if (keys['KeyA']) move.addScaledVector(right,-1);
+
+  // Joystick — forward/back mapped to camera-relative direction
+  if (joystick.active) {
+    move.addScaledVector(fwd,  -joystick.dy);
+    move.addScaledVector(right, joystick.dx);
+  }
 
   if (move.lengthSq() > 0) { move.normalize(); }
   player.vel.x = move.x * spd;
@@ -1080,11 +1184,16 @@ function updatePlayer(dt) {
   }
 
   // E — attack or drink
-  if (keys['KeyE']) tryAttack();
+  if (keys['KeyE'] || touchState.attack) tryAttack();
+
+  // Howl via touch
+  if (touchState.howl && !player.howling) { touchState.howl = false; triggerHowl(); }
 
   // F — bond / mate
   packState.eCooldown = Math.max(0, packState.eCooldown - dt);
-  if (keys['KeyF'] && !fWasDown) { fWasDown = true; tryBondOrMate(); }
+  if ((keys['KeyF'] && !fWasDown) || touchState.bond) {
+    fWasDown = true; touchState.bond = false; tryBondOrMate();
+  }
   if (!keys['KeyF']) fWasDown = false;
 
   // Proximity prompt for mate
