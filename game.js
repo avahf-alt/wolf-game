@@ -1015,6 +1015,109 @@ const animals=[];
 for(let i=0;i<DEER_COUNT;  i++) animals.push(new Animal(makeDeer(),  60,4.5,'deer'));
 for(let i=0;i<RABBIT_COUNT;i++) animals.push(new Animal(makeRabbit(),20,3.8,'rabbit'));
 
+// ─── Hunter Wolves (Prey Mode) ───────────────────────────────────────────────
+let preyMode = false;
+
+const HUNTER_CONFIGS = [
+  { preset:3, eyeIdx:1 },  // Obsidian + gold eyes
+  { preset:7, eyeIdx:4 },  // Shadow + ember eyes
+  { preset:8, eyeIdx:0 },  // Crimson + amber eyes
+];
+
+class HunterWolf {
+  constructor(cfg){
+    this.mesh = makeWolf(cfg);
+    this.mesh.scale.setScalar(1.25);
+    this.mesh.visible = false;
+    scene.add(this.mesh);
+    this.speed = 9.2;
+    this.stamina = 100;
+    this.exhausted = false;
+    this.exhaustTimer = 0;
+    this.legPhase = 0;
+    this.active = false;
+    this.damageCooldown = 0;
+  }
+  activate(playerPos){
+    const angle = Math.random()*Math.PI*2;
+    const dist  = 80+Math.random()*40;
+    let x = playerPos.x+Math.cos(angle)*dist;
+    let z = playerPos.z+Math.sin(angle)*dist;
+    x = Math.max(-WORLD_SIZE/2+5, Math.min(WORLD_SIZE/2-5, x));
+    z = Math.max(-WORLD_SIZE/2+5, Math.min(WORLD_SIZE/2-5, z));
+    this.mesh.position.set(x, terrainY(x,z)+0.9, z);
+    this.mesh.visible = true;
+    this.active = true;
+    this.stamina = 100;
+    this.exhausted = false;
+    this.damageCooldown = 0;
+  }
+  deactivate(){
+    this.mesh.visible = false;
+    this.active = false;
+  }
+  update(dt, playerPos){
+    if(!this.active) return;
+    this.damageCooldown = Math.max(0, this.damageCooldown-dt);
+    if(this.exhausted){
+      this.exhaustTimer -= dt;
+      if(this.exhaustTimer<=0){ this.exhausted=false; this.stamina=100; }
+      if(this.mesh.children[0]) this.mesh.children[0].scale.y=0.8+Math.sin(Date.now()*0.012)*0.06;
+      return;
+    }
+    const dist = this.mesh.position.distanceTo(playerPos);
+    let dx = playerPos.x-this.mesh.position.x;
+    let dz = playerPos.z-this.mesh.position.z;
+    const l = Math.sqrt(dx*dx+dz*dz)+0.001;
+    dx/=l; dz/=l;
+    this.stamina = Math.max(0, this.stamina-dt*9);
+    const tireFactor = this.stamina<30 ? 0.35+0.65*(this.stamina/30) : 1.0;
+    if(this.stamina<=0){
+      this.exhausted=true; this.exhaustTimer=7+Math.random()*5;
+      return;
+    }
+    const spd = this.speed*tireFactor;
+    this.mesh.position.x += dx*spd*dt;
+    this.mesh.position.z += dz*spd*dt;
+    this.mesh.position.y = Math.max(terrainY(this.mesh.position.x,this.mesh.position.z)+0.9, 0.35);
+    this.mesh.rotation.y = Math.atan2(dx,dz);
+    this.legPhase += spd*dt*3.5;
+    ['leg0','leg2'].forEach(n=>{const leg=this.mesh.getObjectByName(n);if(leg)leg.rotation.x=Math.sin(this.legPhase)*0.65;});
+    ['leg1','leg3'].forEach(n=>{const leg=this.mesh.getObjectByName(n);if(leg)leg.rotation.x=-Math.sin(this.legPhase)*0.65;});
+    const tail=this.mesh.getObjectByName('tail');
+    if(tail) tail.rotation.y=Math.sin(this.legPhase*2)*0.5;
+    this.mesh.position.x=Math.max(-WORLD_SIZE/2+5,Math.min(WORLD_SIZE/2-5,this.mesh.position.x));
+    this.mesh.position.z=Math.max(-WORLD_SIZE/2+5,Math.min(WORLD_SIZE/2-5,this.mesh.position.z));
+    if(dist<3.2&&this.damageCooldown<=0){
+      player.health=Math.max(0,player.health-18);
+      this.damageCooldown=1.2;
+      showNotif('A hunter wolf bites you! Run!');
+    }
+  }
+}
+
+const hunterWolves = HUNTER_CONFIGS.map(cfg=>new HunterWolf(cfg));
+
+function togglePreyMode(){
+  preyMode=!preyMode;
+  const btn   = document.getElementById('prey-btn');
+  const label = document.getElementById('prey-mode-label');
+  const mBtn  = document.getElementById('btn-prey');
+  if(preyMode){
+    hunterWolves.forEach(h=>h.activate(player.pos));
+    if(btn){ btn.textContent='⚠ Stop Running'; btn.classList.add('active'); }
+    if(label) label.style.display='block';
+    if(mBtn)  mBtn.classList.add('active');
+    showNotif('Hunter wolves are on your trail! RUN!');
+  } else {
+    hunterWolves.forEach(h=>h.deactivate());
+    if(btn){ btn.textContent='Become Prey'; btn.classList.remove('active'); }
+    if(label) label.style.display='none';
+    if(mBtn)  mBtn.classList.remove('active');
+    showNotif('You slip away into the forest…');
+  }
+}
+
 // ─── Underground Den ──────────────────────────────────────────────────────────
 const den = {
   placed:false, pos:new THREE.Vector3(), insideY:0,
@@ -1230,6 +1333,9 @@ function bindBtn(id,key){
 }
 bindBtn('btn-attack','attack'); bindBtn('btn-howl','howl');
 bindBtn('btn-bond','bond');     bindBtn('btn-sprint','sprint');
+// Prey button — tap to toggle
+const preyMobileBtn=document.getElementById('btn-prey');
+if(preyMobileBtn) preyMobileBtn.addEventListener('touchstart',e=>{e.preventDefault();togglePreyMode();},{passive:false});
 
 // ─── HUD Refs ─────────────────────────────────────────────────────────────────
 const healthFill  = document.getElementById('health-fill');
@@ -1401,6 +1507,9 @@ function updatePlayer(dt){
     showNotif(player.crouching?'Stalking… Animals won\'t notice you as easily.':'Standing.');
   }
   if(!keys['KeyC']) player._cWas=false;
+  // Prey mode toggle
+  if(keys['KeyP']&&!player._pWas){ player._pWas=true; togglePreyMode(); }
+  if(!keys['KeyP']) player._pWas=false;
 
   // G key — dig den or exit den
   if(keys['KeyG']&&!player._gWas){ player._gWas=true;
@@ -1444,7 +1553,8 @@ function updatePlayer(dt){
   // Death
   if(player.health<=0&&!player.dead){
     player.dead=true;
-    deathReason.textContent=player.hunger<10?'Starvation claimed your spirit.':player.thirst<10?'Thirst consumed you.':'The wilderness took you.';
+    const hunterKill=preyMode&&hunterWolves.some(h=>h.active&&h.mesh.position.distanceTo(player.pos)<5);
+    deathReason.textContent=hunterKill?'The hunter wolves brought you down.':player.hunger<10?'Starvation claimed your spirit.':player.thirst<10?'Thirst consumed you.':'The wilderness took you.';
     deathScreen.classList.add('show'); document.exitPointerLock();
   }
   // Cooldowns
@@ -1510,6 +1620,17 @@ function respawn(){
   packState.pups.forEach(p=>scene.remove(p.mesh)); packState.pups.length=0;
   mateMesh.position.set(mateStartX,terrainY(mateStartX,mateStartZ),mateStartZ);
   mate.state='wander'; pupLabel.style.display='none'; updatePackLabel();
+  // Reset prey mode
+  if(preyMode){
+    preyMode=false;
+    hunterWolves.forEach(h=>h.deactivate());
+    const pb=document.getElementById('prey-btn');
+    if(pb){pb.textContent='Become Prey';pb.classList.remove('active');}
+    const pl=document.getElementById('prey-mode-label');
+    if(pl) pl.style.display='none';
+    const mb=document.getElementById('btn-prey');
+    if(mb) mb.classList.remove('active');
+  }
   deathScreen.classList.remove('show');
 }
 document.getElementById('respawn-btn').addEventListener('click',respawn);
@@ -1640,6 +1761,9 @@ document.getElementById('cust-confirm').addEventListener('click',()=>{
   scene.add(wolf);
 });
 
+// ─── Prey Mode Button ─────────────────────────────────────────────────────────
+document.getElementById('prey-btn').addEventListener('click', togglePreyMode);
+
 // ─── Splash ───────────────────────────────────────────────────────────────────
 const splash = document.getElementById('splash');
 document.getElementById('start-btn').addEventListener('click',()=>{
@@ -1659,6 +1783,7 @@ function loop(now){
   if(!player.dead && !custEl.classList.contains('open')){
     updatePlayer(dt);
     animals.forEach(a=>a.update(dt,player.pos));
+    hunterWolves.forEach(h=>h.update(dt,player.pos));
     updateMate(dt);
     updatePups(dt);
     updateHearts(dt);
