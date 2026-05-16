@@ -17,6 +17,11 @@ const HOWL_RADIUS    = 60;
 const BOND_RANGE     = 4.5;
 const GESTATION_DAYS = 2;
 const PUP_GROW_DAYS  = 5;
+const CROUCH_MULT    = 0.35;
+const POUNCE_RANGE   = 9;
+const DEN_FOOD_MAX   = 5;
+const BERRY_COUNT    = 60;
+const FISH_COUNT     = 18;
 
 // ─── Noise ────────────────────────────────────────────────────────────────────
 function hash(x,y){let n=Math.sin(x*127.1+y*311.7)*43758.5453;return n-Math.floor(n)}
@@ -307,6 +312,52 @@ for(let i=0;i<40;i++){
   scene.add(log);
 }
 
+// ─── Berry Bushes ─────────────────────────────────────────────────────────────
+const berryBushes = [];
+const bushMat  = new THREE.MeshStandardMaterial({ color:0x1e3e10, roughness:0.9 });
+const berryMat = new THREE.MeshStandardMaterial({ color:0xcc2222, roughness:0.7, emissive:new THREE.Color(0x330000) });
+for(let i=0;i<BERRY_COUNT;i++){
+  const x=(Math.random()-0.5)*WORLD_SIZE*0.8, z=(Math.random()-0.5)*WORLD_SIZE*0.8;
+  const ty=terrainY(x,z);
+  if(ty<0.5||ty>15) continue;
+  const g=new THREE.Group();
+  // bush body
+  const b=new THREE.Mesh(new THREE.SphereGeometry(0.45+Math.random()*0.25,7,6), bushMat);
+  b.scale.y=0.7; g.add(b);
+  // berries
+  for(let j=0;j<6+Math.floor(Math.random()*5);j++){
+    const br=new THREE.Mesh(new THREE.SphereGeometry(0.06,5,4), berryMat);
+    const a=Math.random()*Math.PI*2, r=0.3+Math.random()*0.25;
+    br.position.set(Math.cos(a)*r, 0.1+Math.random()*0.35, Math.sin(a)*r);
+    g.add(br);
+  }
+  g.position.set(x,ty,z);
+  scene.add(g);
+  berryBushes.push({ mesh:g, pos:new THREE.Vector3(x,ty,z), depleted:false, regenTimer:0 });
+}
+
+// ─── Fish ──────────────────────────────────────────────────────────────────────
+const fishList = [];
+const fishBodyMat = new THREE.MeshStandardMaterial({ color:0x5090c0, roughness:0.4, metalness:0.3 });
+for(let i=0;i<FISH_COUNT;i++){
+  // find a water spot
+  let fx,fz,fy;
+  for(let t=0;t<30;t++){
+    fx=(Math.random()-0.5)*WORLD_SIZE*0.7; fz=(Math.random()-0.5)*WORLD_SIZE*0.7;
+    if(terrainY(fx,fz)<0.2){ fy=0.25; break; }
+  }
+  if(fy===undefined) continue;
+  const g=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.SphereGeometry(0.18,7,5), fishBodyMat);
+  body.scale.set(1,0.55,2.2); g.add(body);
+  const tail=new THREE.Mesh(new THREE.ConeGeometry(0.12,0.2,5), fishBodyMat);
+  tail.position.z=-0.38; tail.rotation.x=Math.PI/2; g.add(tail);
+  g.position.set(fx,fy,fz);
+  g.rotation.y=Math.random()*Math.PI*2;
+  scene.add(g);
+  fishList.push({ mesh:g, angle:Math.random()*Math.PI*2, cx:fx, cz:fz, caught:false });
+}
+
 // ─── Grass ────────────────────────────────────────────────────────────────────
 const grassInst = new THREE.InstancedMesh(
   new THREE.PlaneGeometry(0.28, 0.6, 1, 3),
@@ -542,7 +593,9 @@ function updatePups(dt){
     pup.age+=dayFrac;
     const growT=Math.min(1,pup.age/PUP_GROW_DAYS);
     pup.mesh.scale.setScalar(0.45+growT*0.7);
-    const target=new THREE.Vector3().copy(player.pos).add(pup.followOffset);
+    // Pups rest in den when player is inside, otherwise follow
+    const followBase = (den.placed && !player.inDen) ? den.pos : player.pos;
+    const target=new THREE.Vector3().copy(followBase).add(pup.followOffset);
     const dx=target.x-pup.mesh.position.x, dz=target.z-pup.mesh.position.z;
     const dist=Math.sqrt(dx*dx+dz*dz);
     if(dist>1.5){
@@ -677,7 +730,7 @@ class Animal{
     if(this.dead) return;
     this.timer-=dt;
     const dist=this.mesh.position.distanceTo(wolfPos);
-    const fleeR=this.type==='deer'?22:14;
+    const fleeR=(this.type==='deer'?22:14)*(player.crouching?0.35:1.0);
     if(dist<fleeR){this.state='flee';this.timer=4;}
     if(this.state==='flee'&&this.timer<0) this.state='wander';
     if(this.state==='idle'&&this.timer<0){
@@ -723,6 +776,158 @@ const animals=[];
 for(let i=0;i<DEER_COUNT;  i++) animals.push(new Animal(makeDeer(),  60,4.5,'deer'));
 for(let i=0;i<RABBIT_COUNT;i++) animals.push(new Animal(makeRabbit(),20,3.8,'rabbit'));
 
+// ─── Underground Den ──────────────────────────────────────────────────────────
+const den = {
+  placed:false, pos:new THREE.Vector3(), insideY:0,
+  entrance:null, interior:null, fireLight:null, emberMesh:null,
+  foodCache:0, restTimer:0,
+};
+
+function buildDen(x, z){
+  const ty = terrainY(x,z);
+  if(ty < 1.0){ showNotif('Too wet here — find higher ground.'); return; }
+  if(den.placed){ showNotif('You already have a den.'); return; }
+  den.placed = true;
+  den.pos.set(x, ty, z);
+  den.insideY = ty - 7;
+
+  // ── Entrance mound ──
+  const eg = new THREE.Group();
+  const dirtMat  = new THREE.MeshStandardMaterial({color:0x3a2a12,roughness:0.98});
+  const stoneMat2= new THREE.MeshStandardMaterial({color:0x545048,roughness:0.9});
+  // Earth mound
+  const mound=new THREE.Mesh(new THREE.SphereGeometry(1.6,10,8),dirtMat);
+  mound.scale.set(1.3,0.55,1.1); mound.position.set(0,0.5,0); eg.add(mound);
+  // Dark hole
+  const hole=new THREE.Mesh(new THREE.CircleGeometry(0.65,14),new THREE.MeshBasicMaterial({color:0x050302}));
+  hole.rotation.x=0.55; hole.position.set(0,0.52,0.8); eg.add(hole);
+  // Hole arch rocks
+  for(let i=0;i<5;i++){
+    const a=Math.PI*0.15+i*Math.PI*0.18;
+    const r=new THREE.Mesh(new THREE.DodecahedronGeometry(0.22+Math.random()*0.1,0),stoneMat2);
+    r.position.set(Math.cos(a)*0.75, 0.5+Math.sin(a)*0.4, 0.85);
+    r.rotation.set(Math.random(),Math.random(),Math.random());
+    eg.add(r);
+  }
+  // Scattered dirt
+  for(let i=0;i<8;i++){
+    const d=new THREE.Mesh(new THREE.SphereGeometry(0.12+Math.random()*0.1,5,4),dirtMat);
+    d.scale.y=0.35; d.position.set((Math.random()-0.5)*2.5, 0.1, (Math.random()-0.5)*2+0.5); eg.add(d);
+  }
+  eg.position.set(x,ty,z);
+  scene.add(eg);
+  den.entrance = eg;
+
+  // ── Underground room ──
+  const ig = new THREE.Group();
+  const caveY = den.insideY;
+  const caveMat = new THREE.MeshStandardMaterial({color:0x2e2010,roughness:0.99,side:THREE.BackSide});
+  const cave=new THREE.Mesh(new THREE.SphereGeometry(4.5,16,12),caveMat);
+  cave.scale.set(1.5,0.72,2.0); cave.position.y=caveY+2.2; ig.add(cave);
+  // Floor
+  const floorMat=new THREE.MeshStandardMaterial({color:0x1e1408,roughness:0.99});
+  const floor=new THREE.Mesh(new THREE.CircleGeometry(4.2,18),floorMat);
+  floor.rotation.x=-Math.PI/2; floor.position.y=caveY+0.02; ig.add(floor);
+  // Roots
+  const rootMat=new THREE.MeshStandardMaterial({color:0x3a2210,roughness:0.97});
+  for(let i=0;i<14;i++){
+    const r=new THREE.Mesh(new THREE.CylinderGeometry(0.025,0.01,0.35+Math.random()*0.7,4),rootMat);
+    r.position.set((Math.random()-0.5)*5,caveY+3.8,(Math.random()-0.5)*4);
+    r.rotation.z=(Math.random()-0.5)*0.5; ig.add(r);
+  }
+  // Bedding (dried grass pile)
+  const bedMat=new THREE.MeshStandardMaterial({color:0x7a6828,roughness:0.99});
+  const bed=new THREE.Mesh(new THREE.SphereGeometry(1.2,8,6),bedMat);
+  bed.scale.set(1.4,0.22,1.8); bed.position.set(1.2,caveY+0.12,-0.8); ig.add(bed);
+  // Bone pile
+  const boneMat=new THREE.MeshStandardMaterial({color:0xd8d0b0,roughness:0.85});
+  for(let i=0;i<5;i++){
+    const b=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.03,0.3+Math.random()*0.2,5),boneMat);
+    b.position.set(-1.5+(Math.random()-0.5)*0.8,caveY+0.1,(Math.random()-0.5)*0.6);
+    b.rotation.set(Math.random()*0.5,Math.random()*Math.PI,Math.random()*0.5); ig.add(b);
+  }
+  // Ember glow
+  const emberMat=new THREE.MeshBasicMaterial({color:0xff5500});
+  den.emberMesh=new THREE.Mesh(new THREE.SphereGeometry(0.1,6,5),emberMat);
+  den.emberMesh.position.set(-0.4,caveY+0.15,0.5); ig.add(den.emberMesh);
+  // Fire stones
+  for(let i=0;i<6;i++){
+    const a=i/6*Math.PI*2;
+    const s=new THREE.Mesh(new THREE.SphereGeometry(0.1,5,4),new THREE.MeshStandardMaterial({color:0x444038,roughness:0.9}));
+    s.position.set(-0.4+Math.cos(a)*0.22,caveY+0.08,0.5+Math.sin(a)*0.22); ig.add(s);
+  }
+  // Exit glow (orange-lit tunnel upward)
+  const exitGlow=new THREE.Mesh(new THREE.CircleGeometry(0.7,14),new THREE.MeshBasicMaterial({color:0x604020,transparent:true,opacity:0.7}));
+  exitGlow.rotation.x=0.5; exitGlow.position.set(0,caveY+0.5,3.2); exitGlow.name='denExit'; ig.add(exitGlow);
+  // Warm fire point light
+  den.fireLight=new THREE.PointLight(0xff6820,2.8,7);
+  den.fireLight.position.set(-0.4,caveY+0.6,0.5); ig.add(den.fireLight);
+  // Moss
+  const mossMat=new THREE.MeshStandardMaterial({color:0x1e3a0a,roughness:0.99});
+  for(let i=0;i<5;i++){
+    const m=new THREE.Mesh(new THREE.SphereGeometry(0.25+Math.random()*0.15,6,5),mossMat);
+    m.scale.y=0.18; m.position.set((Math.random()-0.5)*5,caveY+0.04,(Math.random()-0.5)*3.5); ig.add(m);
+  }
+  scene.add(ig);
+  den.interior = ig;
+  showNotif('Den dug! Press E at the entrance to go inside.');
+}
+
+function enterDen(){
+  if(!den.placed) return;
+  const dist=den.pos.distanceTo(player.pos);
+  if(dist>2.8){ showNotif('Get closer to the den entrance.'); return; }
+  player.inDen=true;
+  player.pos.set(den.pos.x, den.insideY+1.5, den.pos.z);
+  player.vel.set(0,0,0);
+  scene.fog.color.set(0x100804);
+  ambientLight.color.set(0x402010); ambientLight.intensity=0.4;
+  showNotif('Inside the den. Press G to exit. Rest here to heal.');
+}
+
+function exitDen(){
+  player.inDen=false;
+  player.pos.set(den.pos.x, terrainY(den.pos.x,den.pos.z)+1.8, den.pos.z+1.5);
+  player.vel.set(0,0,0);
+}
+
+function updateDen(dt){
+  if(!den.placed) return;
+  // Flicker fire
+  if(den.fireLight){
+    den.fireLight.intensity=2.4+Math.sin(Date.now()*0.009)*0.5+Math.sin(Date.now()*0.017)*0.3;
+  }
+  if(den.emberMesh){
+    const s=0.9+Math.sin(Date.now()*0.006)*0.15;
+    den.emberMesh.scale.setScalar(s);
+  }
+  if(player.inDen){
+    // Faster regen while resting in den
+    player.health =Math.min(100,player.health +4*dt);
+    player.stamina=Math.min(100,player.stamina+20*dt);
+    // Check exit
+    const exitPos=new THREE.Vector3(den.pos.x,den.insideY+0.5,den.pos.z+3.2);
+    if(player.pos.distanceTo(exitPos)<2.0&&(keys['KeyG']||touchState.bond)){
+      exitDen();
+    }
+    // Feed pups if food cached
+    if(den.foodCache>0 && notifTimer<=0){
+      notifEl.textContent=`Den: ${den.foodCache}/${DEN_FOOD_MAX} food stored · Press Z to sleep`;
+      notifEl.classList.add('show');
+    }
+    // Sleep with Z
+    if(keys['KeyZ']){
+      timeOfDay=0.26; showNotif('You sleep deeply. Dawn comes.');
+      player.health=Math.min(100,player.health+30);
+      player.hunger=Math.max(0,player.hunger-15);
+    }
+  } else {
+    // Restore fog after exiting
+    if(scene.fog.color.r<0.05) scene.fog.color.lerp(new THREE.Color(0x8da8b0),0.02);
+    if(ambientLight.intensity<0.45) ambientLight.intensity=Math.min(0.5,ambientLight.intensity+0.01);
+  }
+}
+
 // ─── Player State ─────────────────────────────────────────────────────────────
 const player={
   pos:new THREE.Vector3(0,terrainY(0,0)+1.8,0),
@@ -732,6 +937,7 @@ const player={
   grounded:false,kills:0,day:1,legPhase:0,
   attacking:false,attackCooldown:0,
   howling:false,howlTimer:0,dead:false,
+  crouching:false, inDen:false, pounceReady:false,
 };
 
 // ─── Input ────────────────────────────────────────────────────────────────────
@@ -871,22 +1077,52 @@ function triggerHowl(){
 // ─── Attack ───────────────────────────────────────────────────────────────────
 function tryAttack(){
   if(player.attackCooldown>0||player.stamina<8) return;
-  player.attacking=true; player.attackCooldown=0.6;
-  player.stamina=Math.max(0,player.stamina-8);
+  player.attacking=true;
+  const isPounce = player.pounceReady;
+  player.attackCooldown = isPounce ? 1.0 : 0.6;
+  player.stamina=Math.max(0,player.stamina-(isPounce?22:8));
   let hit=false;
+  const range = isPounce ? POUNCE_RANGE : ATTACK_RANGE;
   animals.forEach(a=>{
     if(a.dead) return;
-    if(a.mesh.position.distanceTo(player.pos)<ATTACK_RANGE){
-      const dmg=18+Math.random()*12; a.takeDamage(dmg); hit=true;
+    if(a.mesh.position.distanceTo(player.pos)<range){
+      const dmg=isPounce?(55+Math.random()*25):(18+Math.random()*12);
+      a.takeDamage(dmg); hit=true;
+      if(isPounce) showNotif('Pounce! You pin it to the ground.');
       if(a.dead){
         player.kills++; killsLabel.textContent='Kills: '+player.kills;
-        player.hunger=Math.min(100,player.hunger+(a.type==='deer'?45:18));
-        showNotif(a.type==='deer'?'You bring down a deer. Meat for the pack.':'A rabbit caught. Quick meal.');
-        if(player.kills===5)  { updatePackLabel(); showNotif('You earn your place. Pack: Beta.'); }
-        if(player.kills===15) { packLabel.textContent='Pack: Alpha Wolf'; showNotif('The pack bows. You are Alpha.'); }
+        const meat = a.type==='deer'?50:20;
+        player.hunger=Math.min(100,player.hunger+meat);
+        // Store extra in den if full
+        if(player.hunger>=95&&den.placed&&den.foodCache<DEN_FOOD_MAX){ den.foodCache++; showNotif(`Stored food in den (${den.foodCache}/${DEN_FOOD_MAX}).`); }
+        else showNotif(a.type==='deer'?'You bring down a deer.':'A rabbit caught. Quick meal.');
+        if(player.kills===5)  { updatePackLabel(); showNotif('Pack: Beta Wolf earned.'); }
+        if(player.kills===15) { packLabel.textContent='Pack: Alpha Wolf'; showNotif('You are Alpha.'); }
       }
     }
   });
+  // Berry eating
+  if(!hit){
+    berryBushes.forEach(b=>{
+      if(b.depleted||b.pos.distanceTo(player.pos)>2.2) return;
+      player.hunger=Math.min(100,player.hunger+12);
+      b.depleted=true; b.regenTimer=60;
+      b.mesh.children.forEach((c,i)=>{ if(i>0) c.visible=false; }); // hide berries
+      showNotif('Wild berries. Bitter but filling.'); hit=true;
+    });
+  }
+  // Fish catch (crouching in water)
+  if(!hit&&player.crouching&&isInWater(player.pos)){
+    fishList.forEach(f=>{
+      if(f.caught||f.mesh.position.distanceTo(player.pos)>2.8) return;
+      f.caught=true; f.mesh.visible=false;
+      player.hunger=Math.min(100,player.hunger+28);
+      player.thirst=Math.min(100,player.thirst+18);
+      showNotif('Caught a fish! Fresh meat from the river.'); hit=true;
+      setTimeout(()=>{ f.caught=false; f.mesh.visible=true; },45000);
+    });
+  }
+  // Drink
   if(!hit&&isInWater(player.pos)){ player.thirst=Math.min(100,player.thirst+35); showNotif('You drink from the stream.'); }
 }
 
@@ -899,9 +1135,29 @@ function updatePlayer(dt){
   player.yaw=-mouseX;
   const fwd  = new THREE.Vector3(-Math.sin(player.yaw),0,-Math.cos(player.yaw));
   const right= new THREE.Vector3( Math.cos(player.yaw),0,-Math.sin(player.yaw));
-  const sprinting=keys['ShiftLeft']||keys['ShiftRight']||touchState.sprint;
+  // Crouch toggle
+  if(keys['KeyC'] && !player._cWas){ player.crouching=!player.crouching; player._cWas=true;
+    showNotif(player.crouching?'Stalking… Animals won\'t notice you as easily.':'Standing.');
+  }
+  if(!keys['KeyC']) player._cWas=false;
+
+  // G key — dig den or exit den
+  if(keys['KeyG']&&!player._gWas){ player._gWas=true;
+    if(player.inDen) exitDen();
+    else if(den.placed && den.pos.distanceTo(player.pos)<2.8) enterDen();
+    else if(!den.placed) buildDen(player.pos.x, player.pos.z);
+  }
+  if(!keys['KeyG']) player._gWas=false;
+
+  const sprinting=!player.crouching&&(keys['ShiftLeft']||keys['ShiftRight']||touchState.sprint);
   const moving   =keys['KeyW']||keys['KeyS']||keys['KeyA']||keys['KeyD']||joystick.active;
-  const spd=WOLF_SPEED*(sprinting&&player.stamina>0?SPRINT_MULT:1.0);
+  const cMult    = player.crouching ? CROUCH_MULT : 1.0;
+  const spd=WOLF_SPEED*cMult*(sprinting&&player.stamina>0?SPRINT_MULT:1.0);
+  // Pounce ready: sprinting toward an animal within range
+  player.pounceReady=false;
+  if(sprinting && player.stamina>20){
+    animals.forEach(a=>{ if(!a.dead&&a.mesh.position.distanceTo(player.pos)<POUNCE_RANGE) player.pounceReady=true; });
+  }
   const move=new THREE.Vector3();
   if(keys['KeyW']) move.addScaledVector(fwd, 1);
   if(keys['KeyS']) move.addScaledVector(fwd,-1);
@@ -949,8 +1205,10 @@ function updatePlayer(dt){
     else return;
     notifEl.classList.add('show');
   }
-  // Wolf mesh
-  wolf.position.copy(player.pos); wolf.position.y-=0.9;
+  // Wolf mesh — crouch lowers body
+  wolf.position.copy(player.pos); wolf.position.y -= player.crouching ? 1.2 : 0.9;
+  const targetScaleY = player.crouching ? 0.72 : 1.0;
+  wolf.scale.y += (targetScaleY - wolf.scale.y) * 0.15;
   if(move.lengthSq()>0) wolf.rotation.y=Math.atan2(move.x,move.z);
   if(moving){
     player.legPhase+=spd*dt*3.5;
@@ -974,6 +1232,9 @@ function updatePlayer(dt){
   hungerFill.style.width =player.hunger +'%';
   thirstFill.style.width =player.thirst +'%';
   staminaFill.style.width=player.stamina+'%';
+  document.getElementById('stalk-label').style.display  = player.crouching&&!player.inDen?'block':'none';
+  document.getElementById('den-label').style.display    = player.inDen?'block':'none';
+  document.getElementById('pounce-label').style.display = player.pounceReady?'block':'none';
   if(player.health<30){ const pulse=Math.sin(Date.now()*0.004)*0.5+0.5; vigEl.style.background=`radial-gradient(ellipse at center,transparent 40%,rgba(120,0,0,${0.3+pulse*0.3}) 100%)`; }
   else { vigEl.style.background=''; vigEl.classList.remove('hurt'); }
 }
@@ -1141,7 +1402,12 @@ function loop(now){
     updatePups(dt);
     updateHearts(dt);
     tickGestation(dt);
+    updateDen(dt);
     updateSky(dt);
+    // Berry regen
+    berryBushes.forEach(b=>{ if(b.depleted){ b.regenTimer-=dt; if(b.regenTimer<=0){ b.depleted=false; b.mesh.children.forEach(c=>c.visible=true); } } });
+    // Fish drift
+    fishList.forEach(f=>{ if(f.caught) return; f.angle+=dt*0.4; f.mesh.position.x=f.cx+Math.cos(f.angle)*1.5; f.mesh.position.z=f.cz+Math.sin(f.angle)*1.5; f.mesh.rotation.y=f.angle+Math.PI/2; });
     dayTick+=dt;
     if(dayTick>DAY_LENGTH){ dayTick=0; player.day++; }
     if(notifTimer>0){ notifTimer-=dt; if(notifTimer<=0) notifEl.classList.remove('show'); }
