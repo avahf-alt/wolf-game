@@ -1,947 +1,792 @@
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const WORLD_SIZE   = 600;
-const TERRAIN_SEGS = 120;
-const TREE_COUNT   = 900;
-const GRASS_COUNT  = 4000;
-const ROCK_COUNT   = 180;
-const DEER_COUNT      = 14;
-const RABBIT_COUNT    = 22;
-const DAY_LENGTH      = 240;  // seconds per full day
-const BOND_RANGE      = 4.5;
-const GESTATION_DAYS  = 2;    // in-game days until pups born
-const PUP_GROW_DAYS   = 5;    // in-game days to reach full size
-const WOLF_SPEED   = 7.5;
-const SPRINT_MULT  = 2.0;
-const GRAVITY      = 28;
-const ATTACK_RANGE = 3.2;
-const HOWL_RADIUS  = 60;
+const WORLD_SIZE     = 600;
+const TERRAIN_SEGS   = 140;
+const TREE_COUNT     = 1000;
+const GRASS_COUNT    = 5000;
+const ROCK_COUNT     = 200;
+const DEER_COUNT     = 14;
+const RABBIT_COUNT   = 22;
+const DAY_LENGTH     = 240;
+const WOLF_SPEED     = 7.5;
+const SPRINT_MULT    = 2.0;
+const GRAVITY        = 28;
+const ATTACK_RANGE   = 3.2;
+const HOWL_RADIUS    = 60;
+const BOND_RANGE     = 4.5;
+const GESTATION_DAYS = 2;
+const PUP_GROW_DAYS  = 5;
 
-// ─── Noise (simple 2-D value noise) ──────────────────────────────────────────
-function hash(x, y) {
-  let n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
-  return n - Math.floor(n);
-}
-function noise(x, y) {
-  const ix = Math.floor(x), iy = Math.floor(y);
-  const fx = x - ix, fy = y - iy;
-  const ux = fx * fx * (3 - 2 * fx), uy = fy * fy * (3 - 2 * fy);
-  const a = hash(ix,   iy),   b = hash(ix+1, iy);
-  const c = hash(ix,   iy+1), d = hash(ix+1, iy+1);
-  return a + (b-a)*ux + (c-a)*uy + (d-a)*ux*uy - ((b-a)*ux + (c-a)*uy)*ux*uy +
-         (d-b-c+a)*ux*uy;
-}
-function fbm(x, y, octaves=6) {
-  let v=0, amp=0.5, freq=1, max=0;
-  for (let i=0;i<octaves;i++) {
-    v += amp * noise(x*freq, y*freq);
-    max += amp; amp *= 0.5; freq *= 2.0;
-  }
-  return v / max;
-}
-function terrainY(x, z) {
-  const s = 0.004;
-  const h = fbm(x*s + 100, z*s + 200);
-  return h * h * 35 - 2;
-}
+// ─── Noise ────────────────────────────────────────────────────────────────────
+function hash(x,y){let n=Math.sin(x*127.1+y*311.7)*43758.5453;return n-Math.floor(n)}
+function noise(x,y){const ix=Math.floor(x),iy=Math.floor(y);const fx=x-ix,fy=y-iy;const ux=fx*fx*(3-2*fx),uy=fy*fy*(3-2*fy);const a=hash(ix,iy),b=hash(ix+1,iy),c=hash(ix,iy+1),d=hash(ix+1,iy+1);return a+(b-a)*ux+(c-a)*uy+(d-a)*ux*uy-((b-a)*ux+(c-a)*uy)*ux*uy+(d-b-c+a)*ux*uy}
+function fbm(x,y,o=6){let v=0,a=0.5,f=1,m=0;for(let i=0;i<o;i++){v+=a*noise(x*f,y*f);m+=a;a*=0.5;f*=2}return v/m}
+function terrainY(x,z){const s=0.004;const h=fbm(x*s+100,z*s+200);return h*h*35-2}
+
+// ─── Mobile detect ────────────────────────────────────────────────────────────
+const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)||navigator.maxTouchPoints>1;
+
+// ─── Wolf presets ─────────────────────────────────────────────────────────────
+const COAT_PRESETS = [
+  { name:'Timber',  base:0x7a7268, saddle:0x252218, belly:0xcecab8, sock:0xd8d4c4, eye:0xffee44 },
+  { name:'Arctic',  base:0xf2f0ec, saddle:0xd8d6d0, belly:0xffffff, sock:0xffffff, eye:0x88ccff },
+  { name:'Obsidian',base:0x18180e, saddle:0x080806, belly:0x2e2e28, sock:0x1e1e18, eye:0xff8800 },
+  { name:'Copper',  base:0x8a4c28, saddle:0x4e2010, belly:0xd4906a, sock:0xe0b080, eye:0xffcc44 },
+  { name:'Silver',  base:0x9aa0a8, saddle:0x5a6068, belly:0xe4e8ec, sock:0xdde0e4, eye:0x66bbff },
+  { name:'Tundra',  base:0xb0a87a, saddle:0x6a6030, belly:0xe4ddb8, sock:0xd8d0a0, eye:0xaacc44 },
+  { name:'Shadow',  base:0x3c3a30, saddle:0x181610, belly:0x6a6858, sock:0x505040, eye:0xff6622 },
+  { name:'Crimson', base:0x8a3820, saddle:0x481208, belly:0xc47858, sock:0xd09070, eye:0xffdd44 },
+];
+const EYE_COLORS = [
+  { color:0xffee44, label:'Amber'  },
+  { color:0xff8800, label:'Gold'   },
+  { color:0x88ccff, label:'Ice'    },
+  { color:0x44ff88, label:'Jade'   },
+  { color:0xff4466, label:'Ember'  },
+  { color:0xffffff, label:'White'  },
+];
+
+let wolfConfig = {
+  preset:   0,
+  eyeIdx:   0,
+  scale:    1.0,
+  name:     'Wolf',
+};
 
 // ─── Scene Setup ─────────────────────────────────────────────────────────────
 const canvas   = document.getElementById('canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
 renderer.toneMapping       = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.9;
+renderer.toneMappingExposure = 1.0;
 renderer.outputColorSpace  = THREE.SRGBColorSpace;
 
-const scene  = new THREE.Scene();
-scene.fog    = new THREE.FogExp2(0x8da8b0, 0.008);
+const scene = new THREE.Scene();
+scene.fog   = new THREE.FogExp2(0x8da8b0, 0.007);
 
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 800);
 
 window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
-  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.aspect = window.innerWidth/window.innerHeight;
   camera.updateProjectionMatrix();
+  if (custRenderer) {
+    custRenderer.setSize(custCanvasEl.clientWidth, custCanvasEl.clientHeight);
+    custCamera.aspect = custCanvasEl.clientWidth / custCanvasEl.clientHeight;
+    custCamera.updateProjectionMatrix();
+  }
 });
 
 // ─── Lighting ─────────────────────────────────────────────────────────────────
-const ambientLight = new THREE.AmbientLight(0x404860, 0.6);
+const ambientLight = new THREE.AmbientLight(0x445566, 0.5);
 scene.add(ambientLight);
 
-const sun = new THREE.DirectionalLight(0xfff4e0, 2.5);
+const sun = new THREE.DirectionalLight(0xfff0d0, 3.0);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.near = 1;
-sun.shadow.camera.far  = 400;
-sun.shadow.camera.left = sun.shadow.camera.bottom = -120;
-sun.shadow.camera.right = sun.shadow.camera.top   =  120;
+sun.shadow.camera.near = 1; sun.shadow.camera.far = 400;
+sun.shadow.camera.left = sun.shadow.camera.bottom = -150;
+sun.shadow.camera.right = sun.shadow.camera.top = 150;
 sun.shadow.bias = -0.0003;
 scene.add(sun);
 
-const moonLight = new THREE.DirectionalLight(0x4060a0, 0.4);
+const moonLight = new THREE.DirectionalLight(0x3050a0, 0.5);
 scene.add(moonLight);
 
-const hemi = new THREE.HemisphereLight(0x7090c0, 0x3a5530, 0.5);
+const hemi = new THREE.HemisphereLight(0x7090c0, 0x3a5530, 0.6);
 scene.add(hemi);
 
+// Fill light for soft shadows under canopy
+const fillLight = new THREE.DirectionalLight(0x204030, 0.3);
+fillLight.position.set(-1, 0.5, -1);
+scene.add(fillLight);
+
 // ─── Sky ──────────────────────────────────────────────────────────────────────
-const skyGeo = new THREE.SphereGeometry(700, 32, 32);
-skyGeo.scale(-1, 1, 1);
-const skyMat = new THREE.MeshBasicMaterial({ vertexColors: true });
-// We'll update sky colors in the loop — store vertex colors per time
-const skyCols = new Float32Array(skyGeo.attributes.position.count * 3);
-skyGeo.setAttribute('color', new THREE.BufferAttribute(skyCols, 3));
+const skyGeo  = new THREE.SphereGeometry(700, 32, 16);
+skyGeo.scale(-1,1,1);
+const skyMat  = new THREE.MeshBasicMaterial({ vertexColors: true });
+const skyCols = new Float32Array(skyGeo.attributes.position.count*3);
+skyGeo.setAttribute('color', new THREE.BufferAttribute(skyCols,3));
 const skyMesh = new THREE.Mesh(skyGeo, skyMat);
 scene.add(skyMesh);
 
-const starGeo = new THREE.BufferGeometry();
+// Stars
 const starVerts = [];
-for (let i = 0; i < 3000; i++) {
-  const theta = Math.random() * Math.PI * 2;
-  const phi   = Math.acos(2*Math.random()-1);
-  const r     = 680;
-  starVerts.push(r*Math.sin(phi)*Math.cos(theta), r*Math.cos(phi), r*Math.sin(phi)*Math.sin(theta));
+for(let i=0;i<3000;i++){
+  const t=Math.random()*Math.PI*2, p=Math.acos(2*Math.random()-1), r=680;
+  starVerts.push(r*Math.sin(p)*Math.cos(t), r*Math.cos(p), r*Math.sin(p)*Math.sin(t));
 }
-starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starVerts, 3));
-const starMat  = new THREE.PointsMaterial({ color: 0xffffff, size: 1.4, sizeAttenuation: true });
+const starGeo  = new THREE.BufferGeometry();
+starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starVerts,3));
+const starMat  = new THREE.PointsMaterial({ color:0xffffff, size:1.6, sizeAttenuation:true });
 const starMesh = new THREE.Points(starGeo, starMat);
 scene.add(starMesh);
 
+// Sun disc
+const sunDiscGeo = new THREE.CircleGeometry(8, 24);
+const sunDiscMat = new THREE.MeshBasicMaterial({ color:0xfffde0, transparent:true, opacity:0.95, side:THREE.DoubleSide });
+const sunDisc    = new THREE.Mesh(sunDiscGeo, sunDiscMat);
+scene.add(sunDisc);
+// Glow halo
+const haloGeo = new THREE.CircleGeometry(18, 24);
+const haloMat = new THREE.MeshBasicMaterial({ color:0xffd880, transparent:true, opacity:0.22, side:THREE.DoubleSide });
+const sunHalo = new THREE.Mesh(haloGeo, haloMat);
+scene.add(sunHalo);
+
+// Moon disc
+const moonGeo  = new THREE.CircleGeometry(5, 20);
+const moonMat  = new THREE.MeshBasicMaterial({ color:0xd8e8ff, transparent:true, opacity:0.9, side:THREE.DoubleSide });
+const moonDisc = new THREE.Mesh(moonGeo, moonMat);
+scene.add(moonDisc);
+
+// Clouds (billboard planes)
+const cloudMat = new THREE.MeshBasicMaterial({ color:0xffffff, transparent:true, opacity:0.55, side:THREE.DoubleSide });
+const clouds = [];
+for(let i=0;i<10;i++){
+  const cg = new THREE.PlaneGeometry(80+Math.random()*80, 20+Math.random()*18);
+  const cm = new THREE.Mesh(cg, cloudMat.clone());
+  cm.rotation.x = 0.1 + Math.random()*0.1;
+  const ang = Math.random()*Math.PI*2, rad = 200+Math.random()*120;
+  cm.position.set(Math.cos(ang)*rad, 60+Math.random()*40, Math.sin(ang)*rad);
+  cm.userData.speed = 0.8+Math.random()*0.6;
+  cm.userData.ang   = ang;
+  cm.userData.rad   = rad;
+  scene.add(cm);
+  clouds.push(cm);
+}
+
 // ─── Terrain ─────────────────────────────────────────────────────────────────
-const tGeo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, TERRAIN_SEGS, TERRAIN_SEGS);
-tGeo.rotateX(-Math.PI / 2);
+const tGeo   = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, TERRAIN_SEGS, TERRAIN_SEGS);
+tGeo.rotateX(-Math.PI/2);
 const posAttr = tGeo.attributes.position;
-for (let i = 0; i < posAttr.count; i++) {
-  const x = posAttr.getX(i), z = posAttr.getZ(i);
-  posAttr.setY(i, terrainY(x, z));
+for(let i=0;i<posAttr.count;i++){
+  const x=posAttr.getX(i), z=posAttr.getZ(i);
+  posAttr.setY(i, terrainY(x,z));
 }
 tGeo.computeVertexNormals();
 
-// Vertex color by height/slope for realism
-const tCols = new Float32Array(posAttr.count * 3);
+const tCols   = new Float32Array(posAttr.count*3);
 const norAttr = tGeo.attributes.normal;
-for (let i = 0; i < posAttr.count; i++) {
+for(let i=0;i<posAttr.count;i++){
   const y  = posAttr.getY(i);
   const ny = norAttr.getY(i);
-  // slope: cliff vs slope vs grass
-  const t  = Math.max(0, Math.min(1, ny));
-  // base grass
-  let r = 0.22 + Math.random()*0.04, g = 0.28 + Math.random()*0.06, b = 0.12;
-  if (y < 0.5) { r=0.18;g=0.22;b=0.16; } // wet low ground
-  if (y > 10)  { r = 0.55+y*0.01; g = 0.52+y*0.005; b = 0.48; } // rocky peaks
-  // cliffs override with grey stone
-  const grey = 0.35+Math.random()*0.1;
-  r = r*t + grey*(1-t); g = g*t + (grey*0.95)*(1-t); b = b*t + (grey*0.9)*(1-t);
+  const slope = Math.max(0, Math.min(1, ny));
+  const moisture = noise(posAttr.getX(i)*0.008, posAttr.getZ(i)*0.008);
+  let r, g, b;
+  // Base: rich grass
+  r=0.18+moisture*0.06; g=0.28+moisture*0.1; b=0.10;
+  // Water edge: dark wet mud
+  if(y<0.8){ r=0.15; g=0.18; b=0.12; }
+  // Mid: varied grass
+  if(y>2 && y<10){ r=0.2+moisture*0.05; g=0.3+moisture*0.08; b=0.11; }
+  // High: rocky
+  if(y>10){ const t2=(y-10)/8; r=0.45+t2*0.15; g=0.42+t2*0.12; b=0.38+t2*0.1; }
+  // Peaks: snow
+  if(y>20){ const sn=Math.min(1,(y-20)/5); r=r*(1-sn)+0.92*sn; g=g*(1-sn)+0.94*sn; b=b*(1-sn)+0.98*sn; }
+  // Cliff: grey rock overrides
+  const grey = 0.38+Math.random()*0.08;
+  r=r*slope+grey*(1-slope); g=g*slope+(grey*0.93)*(1-slope); b=b*slope+(grey*0.88)*(1-slope);
+  // Micro noise
+  r+=( Math.random()-0.5)*0.03; g+=(Math.random()-0.5)*0.03; b+=(Math.random()-0.5)*0.02;
   tCols[i*3]=r; tCols[i*3+1]=g; tCols[i*3+2]=b;
 }
-tGeo.setAttribute('color', new THREE.BufferAttribute(tCols, 3));
-
-const tMat  = new THREE.MeshLambertMaterial({ vertexColors: true });
+tGeo.setAttribute('color', new THREE.BufferAttribute(tCols,3));
+const tMat    = new THREE.MeshStandardMaterial({ vertexColors:true, roughness:0.92, metalness:0.0 });
 const terrain = new THREE.Mesh(tGeo, tMat);
 terrain.receiveShadow = true;
 scene.add(terrain);
 
-// ─── Water plane ─────────────────────────────────────────────────────────────
-const waterGeo = new THREE.PlaneGeometry(WORLD_SIZE * 2, WORLD_SIZE * 2);
-waterGeo.rotateX(-Math.PI / 2);
-const waterMat = new THREE.MeshLambertMaterial({
-  color: 0x1a4a7a, transparent: true, opacity: 0.82,
+// ─── Water ────────────────────────────────────────────────────────────────────
+const waterGeo = new THREE.PlaneGeometry(WORLD_SIZE*2, WORLD_SIZE*2, 60, 60);
+waterGeo.rotateX(-Math.PI/2);
+const waterMat = new THREE.MeshStandardMaterial({
+  color:0x1a4a7a, transparent:true, opacity:0.78, roughness:0.05, metalness:0.3,
+  envMapIntensity:0.8,
 });
 const waterMesh = new THREE.Mesh(waterGeo, waterMat);
 waterMesh.position.y = 0.3;
 waterMesh.receiveShadow = true;
 scene.add(waterMesh);
+// Store base water Y for animation
+const waterBaseY = [];
+const waterPos = waterGeo.attributes.position;
+for(let i=0;i<waterPos.count;i++) waterBaseY.push(waterPos.getY(i));
 
 // ─── Trees ────────────────────────────────────────────────────────────────────
-const trunkMat  = new THREE.MeshLambertMaterial({ color: 0x4a3020 });
-const leaf1Mat  = new THREE.MeshLambertMaterial({ color: 0x1e4a1e });
-const leaf2Mat  = new THREE.MeshLambertMaterial({ color: 0x254d20 });
-const piLeafMat = new THREE.MeshLambertMaterial({ color: 0x1a3a1a });
+const trunkMat  = new THREE.MeshStandardMaterial({ color:0x3d2510, roughness:0.95, metalness:0 });
+const leaf1Mat  = new THREE.MeshStandardMaterial({ color:0x1e4a1e, roughness:0.9,  metalness:0 });
+const leaf2Mat  = new THREE.MeshStandardMaterial({ color:0x254d20, roughness:0.9,  metalness:0 });
+const piLeafMat = new THREE.MeshStandardMaterial({ color:0x183318, roughness:0.88, metalness:0 });
+const leaf3Mat  = new THREE.MeshStandardMaterial({ color:0x2e5a18, roughness:0.9,  metalness:0 });
 
 function makeTree(x, z, type) {
-  const group  = new THREE.Group();
-  const ty     = terrainY(x, z);
-  if (ty < 0.6) return null; // no trees in water
-
-  if (type === 0) {
-    // Pine
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18,0.28,4+Math.random()*2,7), trunkMat);
-    trunk.position.y = 2;
-    trunk.castShadow = true;
-    group.add(trunk);
-    const h = 3.5 + Math.random()*2;
-    for (let i=0; i<4; i++) {
-      const cone = new THREE.Mesh(
-        new THREE.ConeGeometry(1.8-i*0.35, h*0.55, 8),
-        piLeafMat
-      );
-      cone.position.y = 3.5 + i * (h*0.32);
-      cone.castShadow = true;
-      group.add(cone);
+  const g  = new THREE.Group();
+  const ty = terrainY(x, z);
+  if(ty < 0.6) return null;
+  if(type===0){
+    // Pine — layered cones
+    const h = 5+Math.random()*4;
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.3,h,8), trunkMat);
+    trunk.position.y=h/2; trunk.castShadow=true; g.add(trunk);
+    const layers = 5+Math.floor(Math.random()*3);
+    for(let i=0;i<layers;i++){
+      const cr = (1.8+Math.random()*0.6)*(1-i/layers*0.55);
+      const ch = (h*0.55)*(1-i/layers*0.3);
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(cr,ch,9), piLeafMat);
+      cone.position.y = h*0.45 + i*(h*0.38/(layers-1));
+      cone.castShadow=true; g.add(cone);
+    }
+  } else if(type===1){
+    // Broad deciduous
+    const h = 5+Math.random()*6;
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18,0.38,h,9), trunkMat);
+    trunk.position.y=h/2; trunk.castShadow=true; g.add(trunk);
+    // Forking branches
+    const cr  = 2.5+Math.random()*2.2;
+    const mat = [leaf1Mat,leaf2Mat,leaf3Mat][Math.floor(Math.random()*3)];
+    for(let k=0;k<3;k++){
+      const ball = new THREE.Mesh(new THREE.SphereGeometry(cr*(0.7+Math.random()*0.5),9,7), mat);
+      ball.position.set((Math.random()-0.5)*cr, h+cr*(0.4+Math.random()*0.4), (Math.random()-0.5)*cr);
+      ball.castShadow=true; g.add(ball);
     }
   } else {
-    // Deciduous
-    const h     = 5 + Math.random() * 4;
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.35,h,8), trunkMat);
-    trunk.position.y = h/2;
-    trunk.castShadow = true;
-    group.add(trunk);
-    const cr   = 2.2 + Math.random()*1.8;
-    const mat  = Math.random() > 0.5 ? leaf1Mat : leaf2Mat;
-    const ball = new THREE.Mesh(new THREE.SphereGeometry(cr, 9, 7), mat);
-    ball.position.y = h + cr * 0.5;
-    ball.castShadow = true;
-    group.add(ball);
-    if (Math.random() > 0.4) {
-      const b2 = new THREE.Mesh(new THREE.SphereGeometry(cr*0.7, 7, 6), mat);
-      b2.position.set((Math.random()-0.5)*cr, h + cr*0.2, (Math.random()-0.5)*cr);
-      b2.castShadow = true;
-      group.add(b2);
-    }
+    // Birch — thin white trunk
+    const h = 6+Math.random()*5;
+    const birchMat = new THREE.MeshStandardMaterial({ color:0xd8d0c0, roughness:0.9, metalness:0 });
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.16,h,7), birchMat);
+    trunk.position.y=h/2; trunk.castShadow=true; g.add(trunk);
+    // Loose canopy
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(1.6+Math.random(),8,7), leaf3Mat);
+    ball.position.y=h+1.2; ball.scale.set(1,0.75,1); ball.castShadow=true; g.add(ball);
   }
-  group.position.set(x, ty, z);
-  group.rotation.y = Math.random() * Math.PI * 2;
-  return group;
+  g.position.set(x,ty,z);
+  g.rotation.y=Math.random()*Math.PI*2;
+  g.userData.baseRY = g.rotation.y;
+  return g;
 }
 
 const treeObjects = [];
-for (let i = 0; i < TREE_COUNT; i++) {
+for(let i=0;i<TREE_COUNT;i++){
   const x    = (Math.random()-0.5)*WORLD_SIZE*0.92;
   const z    = (Math.random()-0.5)*WORLD_SIZE*0.92;
-  const type = Math.random() > 0.45 ? 0 : 1;
-  const t    = makeTree(x, z, type);
-  if (t) { scene.add(t); treeObjects.push(t); }
+  const type = Math.random()<0.42 ? 0 : Math.random()<0.6 ? 1 : 2;
+  const t    = makeTree(x,z,type);
+  if(t){ scene.add(t); treeObjects.push(t); }
 }
 
 // ─── Rocks ────────────────────────────────────────────────────────────────────
-const rockMat = new THREE.MeshLambertMaterial({ color: 0x5a5650 });
-for (let i = 0; i < ROCK_COUNT; i++) {
-  const x  = (Math.random()-0.5)*WORLD_SIZE*0.9;
-  const z  = (Math.random()-0.5)*WORLD_SIZE*0.9;
-  const ty = terrainY(x, z);
-  const s  = 0.4 + Math.random()*1.8;
-  const r  = new THREE.Mesh(
-    new THREE.DodecahedronGeometry(s, 0),
-    rockMat
-  );
-  r.position.set(x, ty + s*0.5, z);
-  r.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, Math.random()*Math.PI);
-  r.castShadow = r.receiveShadow = true;
+const rockMat  = new THREE.MeshStandardMaterial({ color:0x545250, roughness:0.88, metalness:0.05 });
+const rockMat2 = new THREE.MeshStandardMaterial({ color:0x6a6560, roughness:0.85, metalness:0.04 });
+for(let i=0;i<ROCK_COUNT;i++){
+  const x=( Math.random()-0.5)*WORLD_SIZE*0.9;
+  const z=(Math.random()-0.5)*WORLD_SIZE*0.9;
+  const ty=terrainY(x,z);
+  const s=0.4+Math.random()*2.2;
+  const r=new THREE.Mesh(new THREE.DodecahedronGeometry(s,0), Math.random()>0.5?rockMat:rockMat2);
+  r.position.set(x,ty+s*0.45,z);
+  r.rotation.set(Math.random()*Math.PI,Math.random()*Math.PI,Math.random()*Math.PI);
+  r.castShadow=r.receiveShadow=true;
   scene.add(r);
 }
 
-// ─── Grass instances ──────────────────────────────────────────────────────────
-const grassGeo = new THREE.BufferGeometry();
-const gv = [0,-0.1,0,  0.05,0.6,0,  0.1,-0.1,0];
-grassGeo.setAttribute('position', new THREE.Float32BufferAttribute(gv,3));
-const grassMat = new THREE.MeshBasicMaterial({ color:0x2d5a1a, side:THREE.DoubleSide });
-const grassDummy = new THREE.InstancedMesh(
-  new THREE.PlaneGeometry(0.25, 0.55, 1, 3),
-  new THREE.MeshBasicMaterial({ color:0x2d5a20, side:THREE.DoubleSide, transparent:true, opacity:0.9 }),
+// Fallen logs
+const logMat = new THREE.MeshStandardMaterial({ color:0x3a2810, roughness:0.97, metalness:0 });
+for(let i=0;i<40;i++){
+  const x=(Math.random()-0.5)*WORLD_SIZE*0.8, z=(Math.random()-0.5)*WORLD_SIZE*0.8;
+  const ty=terrainY(x,z);
+  if(ty<0.5) continue;
+  const len=3+Math.random()*5;
+  const log=new THREE.Mesh(new THREE.CylinderGeometry(0.18,0.22,len,8), logMat);
+  log.position.set(x,ty+0.18,z);
+  log.rotation.set(Math.random()*0.3, Math.random()*Math.PI, Math.PI/2+Math.random()*0.3);
+  log.castShadow=log.receiveShadow=true;
+  scene.add(log);
+}
+
+// ─── Grass ────────────────────────────────────────────────────────────────────
+const grassInst = new THREE.InstancedMesh(
+  new THREE.PlaneGeometry(0.28, 0.6, 1, 3),
+  new THREE.MeshBasicMaterial({ color:0x2a5518, side:THREE.DoubleSide, transparent:true, opacity:0.92 }),
   GRASS_COUNT
 );
 const dm = new THREE.Object3D();
-for (let i = 0; i < GRASS_COUNT; i++) {
-  const x = (Math.random()-0.5)*WORLD_SIZE;
-  const z = (Math.random()-0.5)*WORLD_SIZE;
-  const y = terrainY(x,z);
-  if (y < 0.4) { dm.position.set(0,-999,0); }
-  else { dm.position.set(x,y+0.15,z); }
-  dm.rotation.y = Math.random()*Math.PI;
-  dm.scale.set(1+Math.random()*0.5,1+Math.random()*0.8,1);
-  dm.updateMatrix();
-  grassDummy.setMatrixAt(i, dm.matrix);
+for(let i=0;i<GRASS_COUNT;i++){
+  const x=(Math.random()-0.5)*WORLD_SIZE, z=(Math.random()-0.5)*WORLD_SIZE, y=terrainY(x,z);
+  if(y<0.4){ dm.position.set(0,-999,0); } else { dm.position.set(x,y+0.18,z); }
+  dm.rotation.y=Math.random()*Math.PI; dm.scale.set(1+Math.random()*0.4,1+Math.random()*0.9,1);
+  dm.updateMatrix(); grassInst.setMatrixAt(i,dm.matrix);
 }
-grassDummy.instanceMatrix.needsUpdate = true;
-scene.add(grassDummy);
+grassInst.instanceMatrix.needsUpdate=true;
+scene.add(grassInst);
 
-// ─── Wolf (player) ────────────────────────────────────────────────────────────
-function makeWolf(color = 0x555550) {
+// ─── Wolf builder (shared for player, mate, pups) ──────────────────────────
+function makeWolf(cfg={}) {
+  const preset = COAT_PRESETS[cfg.preset ?? 0];
+  const eyeCol = EYE_COLORS[cfg.eyeIdx ?? 0].color;
+  const baseCol  = cfg.baseColor  ?? preset.base;
+  const sadCol   = cfg.saddle     ?? preset.saddle;
+  const bellyCol = cfg.belly      ?? preset.belly;
+  const sockCol  = cfg.sock       ?? preset.sock;
+
   const g = new THREE.Group();
 
-  const bodyMat = new THREE.MeshLambertMaterial({ color });
-  const darkMat = new THREE.MeshLambertMaterial({ color: 0x2a2a28 });
-  const whiteMat= new THREE.MeshLambertMaterial({ color: 0xddd8cc });
-  const eyeMat  = new THREE.MeshBasicMaterial({ color: 0xffee44 });
+  function mat(c){ return new THREE.MeshStandardMaterial({ color:c, roughness:0.88, metalness:0.0 }); }
+  const bodyMat  = mat(baseCol);
+  const saddleMat= mat(sadCol);
+  const bellyMat = mat(bellyCol);
+  const sockMat  = mat(sockCol);
+  const eyeMat   = new THREE.MeshStandardMaterial({ color:eyeCol, emissive:new THREE.Color(eyeCol).multiplyScalar(0.3), roughness:0.2, metalness:0.1 });
+  const noseMat  = mat(0x1a1a18);
+  const tongueMat= mat(0xd04858);
+  const darkMat  = mat(sadCol);
 
-  // Body
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.52,10,8), bodyMat);
-  body.scale.set(1.15, 0.85, 1.7);
-  body.position.y = 0.7;
-  body.castShadow = true;
-  g.add(body);
-
-  // Neck
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.28,0.35,8), bodyMat);
-  neck.position.set(0, 1.05, 0.52);
-  neck.rotation.x = -0.4;
-  neck.castShadow = true;
-  g.add(neck);
-
-  // Head
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.32,10,8), bodyMat);
-  head.scale.set(1.05,0.95,1.2);
-  head.position.set(0, 1.24, 0.82);
-  head.castShadow = true;
-  g.add(head);
-
-  // Snout
-  const snout = new THREE.Mesh(new THREE.BoxGeometry(0.22,0.16,0.32), bodyMat);
-  snout.position.set(0, 1.14, 1.05);
-  g.add(snout);
-
-  // Nose
-  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.055,6,5), darkMat);
-  nose.position.set(0, 1.15, 1.21);
-  g.add(nose);
-
-  // Eyes
-  [-1,1].forEach(side => {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.055,6,5), eyeMat);
-    eye.position.set(side*0.13, 1.29, 0.98);
-    g.add(eye);
-    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.03,5,4), darkMat);
-    pupil.position.set(side*0.13, 1.29, 1.03);
-    g.add(pupil);
-  });
-
-  // Ears
-  const earGeo = new THREE.ConeGeometry(0.1, 0.22, 5);
-  [-1,1].forEach(side => {
-    const ear = new THREE.Mesh(earGeo, bodyMat);
-    ear.position.set(side*0.2, 1.5, 0.78);
-    ear.rotation.z = side*0.3;
-    g.add(ear);
-  });
-
-  // Tail
-  const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.1,0.7,7), bodyMat);
-  tail.position.set(0, 0.85, -0.78);
-  tail.rotation.x = 0.9;
-  tail.name = 'tail';
-  g.add(tail);
-
-  // Legs (4)
-  const legGeo = new THREE.CylinderGeometry(0.1, 0.08, 0.6, 7);
-  const legPos = [
-    [ 0.28, 0.3,  0.42], [-0.28, 0.3,  0.42],
-    [ 0.28, 0.3, -0.35], [-0.28, 0.3, -0.35],
-  ];
-  legPos.forEach((p,i) => {
-    const leg = new THREE.Mesh(legGeo, bodyMat);
-    leg.position.set(...p);
-    leg.castShadow = true;
-    leg.name = 'leg' + i;
-    g.add(leg);
-  });
-
+  // Body — elongated, deeper chest
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.54,12,9), bodyMat);
+  body.scale.set(1.1,0.88,1.75); body.position.y=0.72; body.castShadow=true; g.add(body);
+  // Saddle (dark back)
+  const saddle = new THREE.Mesh(new THREE.SphereGeometry(0.52,10,8), saddleMat);
+  saddle.scale.set(0.82,0.45,1.4); saddle.position.set(0,1.08,0); saddle.castShadow=false; g.add(saddle);
   // Belly
-  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.3,8,6), whiteMat);
-  belly.scale.set(0.9,0.5,1.3);
-  belly.position.set(0,0.4,0.1);
-  g.add(belly);
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.32,9,7), bellyMat);
+  belly.scale.set(0.88,0.52,1.35); belly.position.set(0,0.38,0.05); g.add(belly);
+  // Chest tuff
+  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.28,8,7), bellyMat);
+  chest.scale.set(1,0.8,0.9); chest.position.set(0,0.72,0.6); g.add(chest);
+
+  // Neck — angled forward
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.3,0.4,9), bodyMat);
+  neck.position.set(0,1.1,0.56); neck.rotation.x=-0.45; neck.castShadow=true; g.add(neck);
+  // Neck underside
+  const neckB = new THREE.Mesh(new THREE.SphereGeometry(0.18,7,6), bellyMat);
+  neckB.position.set(0,0.88,0.62); g.add(neckB);
+
+  // Head — more realistic proportions
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.3,12,10), bodyMat);
+  head.scale.set(1.08,1.0,1.22); head.position.set(0,1.28,0.88); head.castShadow=true; g.add(head);
+  // Brow ridge
+  const brow = new THREE.Mesh(new THREE.SphereGeometry(0.16,8,6), saddleMat);
+  brow.scale.set(1.4,0.4,0.7); brow.position.set(0,1.42,1.0); g.add(brow);
+  // Cheeks
+  [-1,1].forEach(s=>{
+    const ch=new THREE.Mesh(new THREE.SphereGeometry(0.14,7,6), bodyMat);
+    ch.position.set(s*0.2,1.26,0.9); g.add(ch);
+  });
+
+  // Snout — tapered
+  const snout = new THREE.Mesh(new THREE.BoxGeometry(0.2,0.16,0.35), bodyMat);
+  snout.position.set(0,1.16,1.09); snout.rotation.x=0.12; g.add(snout);
+  const snoutTip = new THREE.Mesh(new THREE.SphereGeometry(0.1,7,6), bodyMat);
+  snoutTip.scale.set(1,0.7,0.9); snoutTip.position.set(0,1.14,1.26); g.add(snoutTip);
+  // Nose — wet black
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.062,8,6), noseMat);
+  nose.scale.set(1.05,0.75,0.9); nose.position.set(0,1.18,1.26); g.add(nose);
+  // Nostrils
+  [-1,1].forEach(s=>{
+    const n=new THREE.Mesh(new THREE.SphereGeometry(0.022,5,4), new THREE.MeshStandardMaterial({color:0x080808,roughness:0.6}));
+    n.position.set(s*0.038,1.165,1.285); g.add(n);
+  });
+  // Mouth line (subtle)
+  const mouthMat = new THREE.MeshStandardMaterial({ color:0x180808, roughness:0.9 });
+  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.12,0.02,0.04), mouthMat);
+  mouth.position.set(0,1.085,1.22); g.add(mouth);
+
+  // Eyes — deep-set with reflective surface
+  [-1,1].forEach(s=>{
+    const eyeSocket = new THREE.Mesh(new THREE.SphereGeometry(0.072,8,7), saddleMat);
+    eyeSocket.position.set(s*0.14,1.31,1.0); g.add(eyeSocket);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.058,8,7), eyeMat);
+    eye.position.set(s*0.14,1.31,1.04); g.add(eye);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.028,6,5), new THREE.MeshStandardMaterial({color:0x020202,roughness:0.1,metalness:0.2}));
+    pupil.position.set(s*0.14,1.31,1.09); g.add(pupil);
+    const catchlight = new THREE.Mesh(new THREE.SphereGeometry(0.01,4,4), new THREE.MeshBasicMaterial({color:0xffffff}));
+    catchlight.position.set(s*0.15,1.33,1.12); g.add(catchlight);
+  });
+
+  // Ears — shaped triangular with inner
+  const earGeo = new THREE.ConeGeometry(0.1,0.26,5);
+  const innerEarMat = mat(0xc06870);
+  [-1,1].forEach(s=>{
+    const ear = new THREE.Mesh(earGeo, bodyMat);
+    ear.position.set(s*0.2,1.54,0.84); ear.rotation.z=s*0.28; ear.castShadow=true; g.add(ear);
+    const inner = new THREE.Mesh(new THREE.ConeGeometry(0.065,0.18,5), innerEarMat);
+    inner.position.set(s*0.2,1.54,0.85); inner.rotation.z=s*0.28; g.add(inner);
+  });
+
+  // Tail — thick base, tapering
+  const tailBase = new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.05,0.55,8), bodyMat);
+  tailBase.position.set(0,0.9,-0.72); tailBase.rotation.x=0.85; tailBase.name='tail'; g.add(tailBase);
+  const tailTip = new THREE.Mesh(new THREE.SphereGeometry(0.1,7,6), bellyMat);
+  tailTip.position.set(0,1.22,-1.08); g.add(tailTip);
+
+  // Legs — longer, more articulated with sock colouring
+  const legPositions = [
+    {name:'leg0', x: 0.3, z: 0.44},
+    {name:'leg1', x:-0.3, z: 0.44},
+    {name:'leg2', x: 0.3, z:-0.38},
+    {name:'leg3', x:-0.3, z:-0.38},
+  ];
+  legPositions.forEach(lp=>{
+    const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.09,0.38,7), bodyMat);
+    thigh.position.set(lp.x, 0.52, lp.z); thigh.castShadow=true; g.add(thigh);
+    const shin  = new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.06,0.38,7), bodyMat);
+    shin.position.set(lp.x, 0.22, lp.z); shin.castShadow=true; shin.name=lp.name; g.add(shin);
+    const paw   = new THREE.Mesh(new THREE.SphereGeometry(0.09,7,6), sockMat);
+    paw.scale.set(1.1,0.7,1.3); paw.position.set(lp.x, 0.06, lp.z+0.04); g.add(paw);
+  });
 
   return g;
 }
 
-const wolf = makeWolf(0x6a6560);
-wolf.scale.setScalar(1.15);
+// ─── Player wolf ──────────────────────────────────────────────────────────────
+let wolf = makeWolf(wolfConfig);
+wolf.scale.setScalar(wolfConfig.scale * 1.15);
 scene.add(wolf);
 
-// ─── Mate Wolf ────────────────────────────────────────────────────────────────
-const mateMesh = makeWolf(0xb0a090); // lighter tan female
+// ─── Mate wolf ────────────────────────────────────────────────────────────────
+const mateCfg = { preset:5, eyeIdx:2 }; // Tundra coat, ice eyes
+const mateMesh = makeWolf(mateCfg);
 mateMesh.scale.setScalar(1.0);
-// Spawn her away from origin
-const mateStartX = 80 + Math.random()*40;
-const mateStartZ = 60 + Math.random()*40;
-mateMesh.position.set(mateStartX, terrainY(mateStartX, mateStartZ), mateStartZ);
+const mateStartX = 80+Math.random()*40, mateStartZ = 60+Math.random()*40;
+mateMesh.position.set(mateStartX, terrainY(mateStartX,mateStartZ), mateStartZ);
 scene.add(mateMesh);
 
-// Heart particle pool
-const heartMat   = new THREE.MeshBasicMaterial({ color: 0xff4488, side: THREE.DoubleSide });
-const heartGeo   = new THREE.PlaneGeometry(0.35, 0.35);
-const hearts     = [];
-for (let i = 0; i < 8; i++) {
-  const h = new THREE.Mesh(heartGeo, heartMat.clone());
-  h.visible = false;
-  h.userData = { life: 0, vx: 0, vy: 0 };
-  scene.add(h);
-  hearts.push(h);
+// ─── Heart particles ──────────────────────────────────────────────────────────
+const heartMat2 = new THREE.MeshBasicMaterial({ color:0xff4488, side:THREE.DoubleSide });
+const hearts = [];
+for(let i=0;i<10;i++){
+  const h=new THREE.Mesh(new THREE.PlaneGeometry(0.38,0.38), heartMat2.clone());
+  h.visible=false; h.userData={life:0,vy:0,vx:0}; scene.add(h); hearts.push(h);
 }
-function spawnHearts(pos) {
-  hearts.forEach(h => {
-    if (!h.visible) {
-      h.visible = true;
-      h.position.copy(pos).add(new THREE.Vector3((Math.random()-0.5)*1.5, 1.2+Math.random()*0.6, (Math.random()-0.5)*1.5));
-      h.userData.life = 1.4;
-      h.userData.vy   = 1.2 + Math.random()*0.8;
-      h.userData.vx   = (Math.random()-0.5)*0.6;
+function spawnHearts(pos){
+  hearts.forEach(h=>{
+    if(!h.visible){
+      h.visible=true;
+      h.position.copy(pos).add(new THREE.Vector3((Math.random()-0.5)*1.8,1.3+Math.random()*0.8,(Math.random()-0.5)*1.8));
+      h.userData.life=1.5; h.userData.vy=1.3+Math.random()*0.7; h.userData.vx=(Math.random()-0.5)*0.5;
     }
   });
 }
-function updateHearts(dt) {
-  hearts.forEach(h => {
-    if (!h.visible) return;
-    h.userData.life -= dt;
-    h.position.y    += h.userData.vy * dt;
-    h.position.x    += h.userData.vx * dt;
-    h.material.opacity = Math.max(0, h.userData.life / 1.4);
-    h.material.transparent = true;
+function updateHearts(dt){
+  hearts.forEach(h=>{
+    if(!h.visible) return;
+    h.userData.life-=dt;
+    h.position.y+=h.userData.vy*dt; h.position.x+=h.userData.vx*dt;
+    h.material.opacity=Math.max(0,h.userData.life/1.5);
+    h.material.transparent=true;
     h.lookAt(camera.position);
-    if (h.userData.life <= 0) h.visible = false;
+    if(h.userData.life<=0) h.visible=false;
   });
 }
 
-const mate = {
-  mesh:        mateMesh,
-  state:       'wander',  // wander | follow | approach | idle
-  target:      new THREE.Vector3(),
-  timer:       Math.random() * 6,
-  legPhase:    0,
-  approachTimer: 0,
-};
-
-function updateMate(dt) {
-  const pos  = mate.mesh.position;
-  const dist = pos.distanceTo(player.pos);
-
-  // Approach player when howled (set from howl fn), or when bond >= 1
-  if (packState.bondLevel > 0 && dist > 12) {
-    mate.state = 'follow';
-  }
-
-  mate.timer -= dt;
-
-  let dx = 0, dz = 0, spd = 3.8;
-
-  if (mate.state === 'follow') {
-    const tx = player.pos.x + (Math.random()-0.5)*4;
-    const tz = player.pos.z + (Math.random()-0.5)*4;
-    dx = tx - pos.x; dz = tz - pos.z;
-    const l = Math.sqrt(dx*dx+dz*dz);
-    if (l < 2.5) { dx=0; dz=0; }
-    else { dx/=l; dz/=l; }
-  } else if (mate.state === 'wander') {
-    if (mate.timer < 0) {
-      mate.timer = 3 + Math.random()*6;
-      const a = Math.random()*Math.PI*2;
-      const r = 10 + Math.random()*30;
-      mate.target.set(
-        Math.max(-WORLD_SIZE/2+5, Math.min(WORLD_SIZE/2-5, pos.x + Math.cos(a)*r)),
-        0,
-        Math.max(-WORLD_SIZE/2+5, Math.min(WORLD_SIZE/2-5, pos.z + Math.sin(a)*r))
-      );
-    }
-    dx = mate.target.x - pos.x; dz = mate.target.z - pos.z;
-    const l = Math.sqrt(dx*dx+dz*dz);
-    if (l < 1) { dx=0; dz=0; }
-    else { dx/=l; dz/=l; }
-  }
-
-  if (dx !== 0 || dz !== 0) {
-    pos.x += dx*spd*dt;
-    pos.z += dz*spd*dt;
-    pos.y  = Math.max(terrainY(pos.x, pos.z), 0.35);
-    mate.mesh.rotation.y = Math.atan2(dx, dz);
-    mate.legPhase += spd*dt*3.5;
-    ['leg0','leg2'].forEach(n=>{
-      const l = mate.mesh.getObjectByName(n);
-      if (l) l.rotation.x = Math.sin(mate.legPhase)*0.6;
-    });
-    ['leg1','leg3'].forEach(n=>{
-      const l = mate.mesh.getObjectByName(n);
-      if (l) l.rotation.x = -Math.sin(mate.legPhase)*0.6;
-    });
-  }
-  // Tail wag near player
-  const tail = mate.mesh.getObjectByName('tail');
-  if (tail) tail.rotation.y = dist < 10 ? Math.sin(Date.now()*0.006)*0.5 : 0;
-}
-
-// ─── Pack / Breeding State ────────────────────────────────────────────────────
-const packState = {
-  bondLevel:       0,    // 0-3, then mated
-  mated:           false,
-  pregnant:        false,
-  gestationTimer:  0,    // seconds remaining
-  pups:            [],   // array of pup objects
-  eCooldown:       0,
-};
-
-function updatePackLabel() {
-  const alive = packState.pups.filter(p=>!p.dead).length;
-  if (!packState.mated) {
-    if (packState.bondLevel === 0) packLabel.textContent = 'Pack: Lone Wolf';
-    else packLabel.textContent = `Pack: Bonding (${packState.bondLevel}/3)`;
+// ─── Mate AI ──────────────────────────────────────────────────────────────────
+const mate = { mesh:mateMesh, state:'wander', target:new THREE.Vector3(), timer:Math.random()*6, legPhase:0 };
+function updateMate(dt){
+  const pos=mate.mesh.position;
+  const dist=pos.distanceTo(player.pos);
+  if(packState.bondLevel>0&&dist>12) mate.state='follow';
+  mate.timer-=dt;
+  let dx=0,dz=0,spd=3.8;
+  if(mate.state==='follow'){
+    dx=player.pos.x+(Math.random()-0.5)*4-pos.x;
+    dz=player.pos.z+(Math.random()-0.5)*4-pos.z;
+    const l=Math.sqrt(dx*dx+dz*dz);
+    if(l<2.5){dx=0;dz=0;}else{dx/=l;dz/=l;}
   } else {
-    const parts = ['You', 'Mate'];
-    if (alive > 0) parts.push(`${alive} pup${alive>1?'s':''}`);
-    packLabel.textContent = 'Pack: ' + parts.join(' + ');
-  }
-}
-
-// ─── Pup ──────────────────────────────────────────────────────────────────────
-function spawnPup() {
-  // Random pup color — blend between parents
-  const colors = [0x8a8070, 0x6a6560, 0xb0a090, 0x707068, 0x909080];
-  const col    = colors[Math.floor(Math.random()*colors.length)];
-  const mesh   = makeWolf(col);
-  const startScale = 0.45;
-  mesh.scale.setScalar(startScale);
-  // Near the mate
-  const ox = (Math.random()-0.5)*3, oz = (Math.random()-0.5)*3;
-  const px = mateMesh.position.x + ox;
-  const pz = mateMesh.position.z + oz;
-  mesh.position.set(px, terrainY(px,pz), pz);
-  scene.add(mesh);
-
-  const pup = {
-    mesh,
-    age:       0,         // in-game days
-    legPhase:  0,
-    dead:      false,
-    followOffset: new THREE.Vector3((Math.random()-0.5)*3, 0, (Math.random()-0.5)*3),
-  };
-  packState.pups.push(pup);
-  return pup;
-}
-
-function updatePups(dt) {
-  const dayFrac = dt / DAY_LENGTH;
-  packState.pups.forEach(pup => {
-    if (pup.dead) return;
-    pup.age += dayFrac;
-
-    // Grow towards full size
-    const growT   = Math.min(1, pup.age / PUP_GROW_DAYS);
-    const s       = 0.45 + growT * 0.7;
-    pup.mesh.scale.setScalar(s);
-
-    // Follow player with individual offset
-    const target = new THREE.Vector3()
-      .copy(player.pos)
-      .add(pup.followOffset);
-    const dx = target.x - pup.mesh.position.x;
-    const dz = target.z - pup.mesh.position.z;
-    const dist = Math.sqrt(dx*dx+dz*dz);
-
-    if (dist > 1.5) {
-      const spd = WOLF_SPEED * 0.8 * (1 - growT*0.2);
-      const ndx = dx/dist, ndz = dz/dist;
-      pup.mesh.position.x += ndx*spd*dt;
-      pup.mesh.position.z += ndz*spd*dt;
-      pup.mesh.position.y  = Math.max(terrainY(pup.mesh.position.x, pup.mesh.position.z), 0.2);
-      pup.mesh.rotation.y  = Math.atan2(ndx, ndz);
-      pup.legPhase += spd*dt*4;
-      ['leg0','leg2'].forEach(n=>{
-        const l = pup.mesh.getObjectByName(n); if(l) l.rotation.x = Math.sin(pup.legPhase)*0.7;
-      });
-      ['leg1','leg3'].forEach(n=>{
-        const l = pup.mesh.getObjectByName(n); if(l) l.rotation.x = -Math.sin(pup.legPhase)*0.7;
-      });
+    if(mate.timer<0){
+      mate.timer=3+Math.random()*6;
+      const a=Math.random()*Math.PI*2,r=10+Math.random()*30;
+      mate.target.set(Math.max(-WORLD_SIZE/2+5,Math.min(WORLD_SIZE/2-5,pos.x+Math.cos(a)*r)),0,Math.max(-WORLD_SIZE/2+5,Math.min(WORLD_SIZE/2-5,pos.z+Math.sin(a)*r)));
     }
-    // Tail wag always for pups
-    const tail = pup.mesh.getObjectByName('tail');
-    if (tail) tail.rotation.y = Math.sin(Date.now()*0.008 + pup.age*10)*0.6;
+    dx=mate.target.x-pos.x; dz=mate.target.z-pos.z;
+    const l=Math.sqrt(dx*dx+dz*dz);
+    if(l<1){dx=0;dz=0;}else{dx/=l;dz/=l;}
+  }
+  if(dx!==0||dz!==0){
+    pos.x+=dx*spd*dt; pos.z+=dz*spd*dt;
+    pos.y=Math.max(terrainY(pos.x,pos.z),0.35);
+    mate.mesh.rotation.y=Math.atan2(dx,dz);
+    mate.legPhase+=spd*dt*3.5;
+    ['leg0','leg2'].forEach(n=>{const l=mate.mesh.getObjectByName(n);if(l)l.rotation.x=Math.sin(mate.legPhase)*0.6;});
+    ['leg1','leg3'].forEach(n=>{const l=mate.mesh.getObjectByName(n);if(l)l.rotation.x=-Math.sin(mate.legPhase)*0.6;});
+  }
+  const tail=mate.mesh.getObjectByName('tail');
+  if(tail) tail.rotation.y=dist<10?Math.sin(Date.now()*0.006)*0.5:0;
+}
+
+// ─── Pack / Breeding ──────────────────────────────────────────────────────────
+const packState = { bondLevel:0, mated:false, pregnant:false, gestationTimer:0, pups:[], eCooldown:0 };
+function updatePackLabel(){
+  const alive=packState.pups.filter(p=>!p.dead).length;
+  if(!packState.mated){ packLabel.textContent=packState.bondLevel===0?'Pack: Lone Wolf':`Pack: Bonding (${packState.bondLevel}/3)`;
+  } else { const pts=['You','Mate'];if(alive>0)pts.push(`${alive} pup${alive>1?'s':''}`); packLabel.textContent='Pack: '+pts.join(' + '); }
+}
+function spawnPup(){
+  const pIdx=Math.floor(Math.random()*COAT_PRESETS.length);
+  const mesh=makeWolf({preset:pIdx,eyeIdx:Math.floor(Math.random()*EYE_COLORS.length)});
+  mesh.scale.setScalar(0.45);
+  const ox=(Math.random()-0.5)*3,oz=(Math.random()-0.5)*3;
+  const px=mateMesh.position.x+ox,pz=mateMesh.position.z+oz;
+  mesh.position.set(px,terrainY(px,pz),pz);
+  scene.add(mesh);
+  const pup={mesh,age:0,legPhase:0,dead:false,followOffset:new THREE.Vector3((Math.random()-0.5)*3,0,(Math.random()-0.5)*3)};
+  packState.pups.push(pup);
+}
+function updatePups(dt){
+  const dayFrac=dt/DAY_LENGTH;
+  packState.pups.forEach(pup=>{
+    if(pup.dead) return;
+    pup.age+=dayFrac;
+    const growT=Math.min(1,pup.age/PUP_GROW_DAYS);
+    pup.mesh.scale.setScalar(0.45+growT*0.7);
+    const target=new THREE.Vector3().copy(player.pos).add(pup.followOffset);
+    const dx=target.x-pup.mesh.position.x, dz=target.z-pup.mesh.position.z;
+    const dist=Math.sqrt(dx*dx+dz*dz);
+    if(dist>1.5){
+      const spd=WOLF_SPEED*0.8;
+      pup.mesh.position.x+=dx/dist*spd*dt; pup.mesh.position.z+=dz/dist*spd*dt;
+      pup.mesh.position.y=Math.max(terrainY(pup.mesh.position.x,pup.mesh.position.z),0.2);
+      pup.mesh.rotation.y=Math.atan2(dx/dist,dz/dist);
+      pup.legPhase+=spd*dt*4;
+      ['leg0','leg2'].forEach(n=>{const l=pup.mesh.getObjectByName(n);if(l)l.rotation.x=Math.sin(pup.legPhase)*0.7;});
+      ['leg1','leg3'].forEach(n=>{const l=pup.mesh.getObjectByName(n);if(l)l.rotation.x=-Math.sin(pup.legPhase)*0.7;});
+    }
+    const tail=pup.mesh.getObjectByName('tail');
+    if(tail) tail.rotation.y=Math.sin(Date.now()*0.008+pup.age*10)*0.7;
   });
 }
-
-// ─── Bond / Mate (F key) ──────────────────────────────────────────────────────
-let fWasDown = false;
-function tryBondOrMate() {
-  if (packState.eCooldown > 0) return;
-  const dist = mateMesh.position.distanceTo(player.pos);
-  if (dist > BOND_RANGE) return;
-
-  packState.eCooldown = 1.8;
-
-  if (!packState.mated) {
-    if (packState.bondLevel < 3) {
+let fWasDown=false;
+function tryBondOrMate(){
+  if(packState.eCooldown>0) return;
+  if(mateMesh.position.distanceTo(player.pos)>BOND_RANGE) return;
+  packState.eCooldown=1.8;
+  if(!packState.mated){
+    if(packState.bondLevel<3){
       packState.bondLevel++;
       spawnHearts(mateMesh.position);
-      const msgs = ['', 'You nuzzle. A connection forms.', 'She leans close. Trust grows.', 'Your bond is complete.'];
+      const msgs=['','You nuzzle her softly.','She leans in. Trust deepens.','Your bond is unbreakable.'];
       showNotif(msgs[packState.bondLevel]);
-      if (packState.bondLevel === 3) {
-        packState.mated = true;
-        mate.state = 'follow';
-        setTimeout(() => showNotif('Press F near your mate to start a litter.'), 3200);
-      }
+      if(packState.bondLevel===3){ packState.mated=true; mate.state='follow'; setTimeout(()=>showNotif('Press F near your mate to start a litter.'),3200); }
       updatePackLabel();
     }
-  } else if (packState.mated && !packState.pregnant) {
-    // Need to be fed enough
-    if (player.hunger < 55) {
-      showNotif('You are too hungry. Hunt first.'); return;
-    }
-    if (player.thirst < 40) {
-      showNotif('You are too thirsty. Drink first.'); return;
-    }
-    packState.pregnant     = true;
-    packState.gestationTimer = GESTATION_DAYS * DAY_LENGTH;
-    spawnHearts(mateMesh.position);
-    spawnHearts(wolf.position);
+  } else if(!packState.pregnant){
+    if(player.hunger<55){showNotif('Hunt first — you are too hungry.');return;}
+    if(player.thirst<40){showNotif('Drink first — you are too thirsty.');return;}
+    packState.pregnant=true; packState.gestationTimer=GESTATION_DAYS*DAY_LENGTH;
+    spawnHearts(mateMesh.position); spawnHearts(wolf.position);
     showNotif('A new litter is on the way...');
     updatePackLabel();
-  } else if (packState.pregnant) {
-    showNotif('Pups are on the way. Be patient.');
-  } else {
-    showNotif('Your mate is by your side.');
-  }
+  } else { showNotif('Pups are on the way. Be patient.'); }
 }
-
 const pupLabel = document.getElementById('pup-label');
-
-// Gestation tick — called in main loop
-function tickGestation(dt) {
-  if (!packState.pregnant) {
-    pupLabel.style.display = 'none';
-    return;
-  }
-  packState.gestationTimer -= dt;
-  const daysLeft = Math.max(0, packState.gestationTimer / DAY_LENGTH);
-  pupLabel.style.display = 'block';
-  pupLabel.textContent   = `Expecting pups · ${daysLeft.toFixed(1)}d`;
-
-  if (packState.gestationTimer <= 0) {
-    packState.pregnant = false;
-    pupLabel.style.display = 'none';
-    const count = 2 + Math.floor(Math.random()*3); // 2–4 pups
-    for (let i=0; i<count; i++) spawnPup();
+function tickGestation(dt){
+  if(!packState.pregnant){ pupLabel.style.display='none'; return; }
+  packState.gestationTimer-=dt;
+  const daysLeft=Math.max(0,packState.gestationTimer/DAY_LENGTH);
+  pupLabel.style.display='block';
+  pupLabel.textContent=`Expecting pups · ${daysLeft.toFixed(1)}d`;
+  if(packState.gestationTimer<=0){
+    packState.pregnant=false; pupLabel.style.display='none';
+    const count=2+Math.floor(Math.random()*3);
+    for(let i=0;i<count;i++) spawnPup();
     spawnHearts(mateMesh.position);
     showNotif(`${count} pups born! Your pack grows.`);
     updatePackLabel();
   }
 }
 
-// ─── Deer ────────────────────────────────────────────────────────────────────
-function makeDeer() {
-  const g = new THREE.Group();
-  const mat  = new THREE.MeshLambertMaterial({ color: 0x8a6040 });
-  const dark = new THREE.MeshLambertMaterial({ color: 0x3a2010 });
-  const white= new THREE.MeshLambertMaterial({ color: 0xfff0e0 });
-  const eye  = new THREE.MeshBasicMaterial({ color: 0x111100 });
-
-  // Body
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.5,9,7), mat);
-  body.scale.set(1,0.8,1.6); body.position.y=1.1; body.castShadow=true; g.add(body);
-  // Neck
-  const nk = new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.2,0.5,7), mat);
-  nk.position.set(0,1.5,0.55); nk.rotation.x=-0.5; nk.castShadow=true; g.add(nk);
-  // Head
-  const hd = new THREE.Mesh(new THREE.SphereGeometry(0.22,9,7), mat);
-  hd.scale.set(1,0.9,1.3); hd.position.set(0,1.72,0.82); hd.castShadow=true; g.add(hd);
-  // Snout
-  const sn = new THREE.Mesh(new THREE.BoxGeometry(0.14,0.12,0.2), mat);
-  sn.position.set(0,1.63,0.98); g.add(sn);
-  // Eyes
+// ─── Deer & Rabbit ────────────────────────────────────────────────────────────
+function makeDeer(){
+  const g=new THREE.Group();
+  const mat =new THREE.MeshStandardMaterial({color:0x8a5e38,roughness:0.88,metalness:0});
+  const dark=new THREE.MeshStandardMaterial({color:0x3a2010,roughness:0.9,metalness:0});
+  const white=new THREE.MeshStandardMaterial({color:0xfff0e0,roughness:0.85,metalness:0});
+  const eye=new THREE.MeshStandardMaterial({color:0x0a0800,roughness:0.2,metalness:0.1});
+  const body=new THREE.Mesh(new THREE.SphereGeometry(0.5,9,7),mat);
+  body.scale.set(1,0.8,1.6);body.position.y=1.1;body.castShadow=true;g.add(body);
+  const nk=new THREE.Mesh(new THREE.CylinderGeometry(0.14,0.2,0.52,7),mat);
+  nk.position.set(0,1.52,0.57);nk.rotation.x=-0.5;nk.castShadow=true;g.add(nk);
+  const hd=new THREE.Mesh(new THREE.SphereGeometry(0.22,9,7),mat);
+  hd.scale.set(1,0.9,1.3);hd.position.set(0,1.74,0.84);hd.castShadow=true;g.add(hd);
+  const sn=new THREE.Mesh(new THREE.BoxGeometry(0.14,0.12,0.2),mat);
+  sn.position.set(0,1.64,1.0);g.add(sn);
   [-1,1].forEach(s=>{
-    const e = new THREE.Mesh(new THREE.SphereGeometry(0.04,5,4), eye);
-    e.position.set(s*0.11,1.76,0.93); g.add(e);
+    const e=new THREE.Mesh(new THREE.SphereGeometry(0.04,6,5),eye);
+    e.position.set(s*0.11,1.78,0.95);g.add(e);
   });
-  // Ears
   [-1,1].forEach(s=>{
-    const e = new THREE.Mesh(new THREE.ConeGeometry(0.08,0.2,5), mat);
-    e.position.set(s*0.17,1.88,0.75); e.rotation.z=s*0.5; g.add(e);
+    const e=new THREE.Mesh(new THREE.ConeGeometry(0.08,0.22,5),mat);
+    e.position.set(s*0.17,1.9,0.76);e.rotation.z=s*0.5;g.add(e);
   });
-  // Tail
-  const tl = new THREE.Mesh(new THREE.SphereGeometry(0.1,6,5), white);
-  tl.position.set(0,1.1,-0.75); g.add(tl);
-  // Legs
-  const legG = new THREE.CylinderGeometry(0.07,0.05,0.9,6);
+  const tl=new THREE.Mesh(new THREE.SphereGeometry(0.1,6,5),white);
+  tl.position.set(0,1.1,-0.75);g.add(tl);
+  const legG=new THREE.CylinderGeometry(0.07,0.05,0.9,6);
   [[0.22,0.45,0.38],[-0.22,0.45,0.38],[0.22,0.45,-0.32],[-0.22,0.45,-0.32]].forEach((p,i)=>{
-    const l = new THREE.Mesh(legG, mat);
-    l.position.set(...p); l.castShadow=true; l.name='leg'+i; g.add(l);
+    const l=new THREE.Mesh(legG,mat);l.position.set(...p);l.castShadow=true;l.name='leg'+i;g.add(l);
   });
-  // Antlers (male, random)
-  if (Math.random() > 0.45) {
+  if(Math.random()>0.4){
     [-1,1].forEach(s=>{
-      const a = new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.05,0.5,5), dark);
-      a.position.set(s*0.12,2.05,0.72); a.rotation.z=s*0.3; g.add(a);
-      const a2= new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.03,0.3,5), dark);
-      a2.position.set(s*0.2,2.3,0.68); a2.rotation.z=s*0.7; g.add(a2);
+      const a=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.05,0.5,5),dark);
+      a.position.set(s*0.12,2.06,0.73);a.rotation.z=s*0.3;g.add(a);
+      const a2=new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.03,0.32,5),dark);
+      a2.position.set(s*0.2,2.32,0.7);a2.rotation.z=s*0.7;g.add(a2);
     });
   }
   return g;
 }
-
-// ─── Rabbit ──────────────────────────────────────────────────────────────────
-function makeRabbit() {
-  const g    = new THREE.Group();
-  const mat  = new THREE.MeshLambertMaterial({ color: 0x9a8c7a });
-  const dark = new THREE.MeshBasicMaterial({ color: 0x111100 });
-  // Body
-  const b = new THREE.Mesh(new THREE.SphereGeometry(0.18,7,6), mat);
-  b.scale.set(1,0.85,1.3); b.position.y=0.22; b.castShadow=true; g.add(b);
-  // Head
-  const h = new THREE.Mesh(new THREE.SphereGeometry(0.13,7,6), mat);
-  h.position.set(0,0.4,0.2); h.castShadow=true; g.add(h);
-  // Ears
+function makeRabbit(){
+  const g=new THREE.Group();
+  const mat=new THREE.MeshStandardMaterial({color:0x9a8a72,roughness:0.9,metalness:0});
+  const dark=new THREE.MeshStandardMaterial({color:0x100c08,roughness:0.3,metalness:0.05});
+  const b=new THREE.Mesh(new THREE.SphereGeometry(0.18,7,6),mat);
+  b.scale.set(1,0.85,1.3);b.position.y=0.22;b.castShadow=true;g.add(b);
+  const h=new THREE.Mesh(new THREE.SphereGeometry(0.13,7,6),mat);
+  h.position.set(0,0.4,0.2);h.castShadow=true;g.add(h);
   [-1,1].forEach(s=>{
-    const e = new THREE.Mesh(new THREE.CapsuleGeometry(0.03,0.22,4,6), mat);
-    e.position.set(s*0.07,0.65,0.16); g.add(e);
+    const e=new THREE.Mesh(new THREE.CapsuleGeometry(0.03,0.22,4,6),mat);
+    e.position.set(s*0.07,0.66,0.17);g.add(e);
   });
-  // Eyes
   [-1,1].forEach(s=>{
-    const e = new THREE.Mesh(new THREE.SphereGeometry(0.025,5,4), dark);
-    e.position.set(s*0.08,0.42,0.3); g.add(e);
+    const e=new THREE.Mesh(new THREE.SphereGeometry(0.026,5,4),dark);
+    e.position.set(s*0.08,0.43,0.31);g.add(e);
   });
-  // Tail
-  const tl = new THREE.Mesh(new THREE.SphereGeometry(0.07,5,4), new THREE.MeshLambertMaterial({color:0xffffff}));
-  tl.position.set(0,0.22,-0.2); g.add(tl);
-  // Legs
+  const tl=new THREE.Mesh(new THREE.SphereGeometry(0.07,5,4),new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.9}));
+  tl.position.set(0,0.22,-0.2);g.add(tl);
   [[0.1,0.08,0.12],[-0.1,0.08,0.12],[0.1,0.08,-0.1],[-0.1,0.08,-0.1]].forEach(p=>{
-    const l = new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.025,0.2,5), mat);
-    l.position.set(...p); g.add(l);
+    const l=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.025,0.2,5),mat);
+    l.position.set(...p);g.add(l);
   });
   return g;
 }
 
-// ─── Animal State ─────────────────────────────────────────────────────────────
-class Animal {
-  constructor(mesh, maxHealth, speed, type) {
-    this.mesh     = mesh;
-    this.health   = maxHealth;
-    this.maxHealth= maxHealth;
-    this.speed    = speed;
-    this.type     = type; // 'deer' | 'rabbit'
-    this.state    = 'idle'; // idle | wander | flee | dead
-    this.target   = new THREE.Vector3();
-    this.vel      = new THREE.Vector3();
-    this.timer    = Math.random() * 5;
-    this.dead     = false;
-    this.legPhase = 0;
-    // random start
-    const x = (Math.random()-0.5)*WORLD_SIZE*0.8;
-    const z = (Math.random()-0.5)*WORLD_SIZE*0.8;
-    mesh.position.set(x, terrainY(x,z)+0.05, z);
+// ─── Animal AI ────────────────────────────────────────────────────────────────
+class Animal{
+  constructor(mesh,maxHealth,speed,type){
+    this.mesh=mesh;this.health=maxHealth;this.maxHealth=maxHealth;
+    this.speed=speed;this.type=type;this.state='idle';
+    this.target=new THREE.Vector3();this.timer=Math.random()*5;
+    this.dead=false;this.legPhase=0;
+    const x=(Math.random()-0.5)*WORLD_SIZE*0.8,z=(Math.random()-0.5)*WORLD_SIZE*0.8;
+    mesh.position.set(x,terrainY(x,z)+0.05,z);
     scene.add(mesh);
   }
-  update(dt, wolfPos) {
-    if (this.dead) return;
-    this.timer -= dt;
-    const dist = this.mesh.position.distanceTo(wolfPos);
-
-    const fleeR = this.type === 'deer' ? 22 : 14;
-    if (dist < fleeR) {
-      this.state = 'flee';
-      this.timer = 4;
-    }
-    if (this.state === 'flee' && this.timer < 0) this.state = 'wander';
-
-    if (this.state === 'idle' && this.timer < 0) {
-      this.state = Math.random() > 0.3 ? 'wander' : 'idle';
-      this.timer = 2 + Math.random() * 5;
-      if (this.state === 'wander') {
-        const a = Math.random() * Math.PI * 2;
-        const r = 8 + Math.random() * 25;
-        this.target.set(
-          this.mesh.position.x + Math.cos(a)*r,
-          0,
-          this.mesh.position.z + Math.sin(a)*r
-        );
-        // clamp to world
-        this.target.x = Math.max(-WORLD_SIZE/2+5, Math.min(WORLD_SIZE/2-5, this.target.x));
-        this.target.z = Math.max(-WORLD_SIZE/2+5, Math.min(WORLD_SIZE/2-5, this.target.z));
+  update(dt,wolfPos){
+    if(this.dead) return;
+    this.timer-=dt;
+    const dist=this.mesh.position.distanceTo(wolfPos);
+    const fleeR=this.type==='deer'?22:14;
+    if(dist<fleeR){this.state='flee';this.timer=4;}
+    if(this.state==='flee'&&this.timer<0) this.state='wander';
+    if(this.state==='idle'&&this.timer<0){
+      this.state=Math.random()>0.3?'wander':'idle';
+      this.timer=2+Math.random()*5;
+      if(this.state==='wander'){
+        const a=Math.random()*Math.PI*2,r=8+Math.random()*25;
+        this.target.set(Math.max(-WORLD_SIZE/2+5,Math.min(WORLD_SIZE/2-5,this.mesh.position.x+Math.cos(a)*r)),0,Math.max(-WORLD_SIZE/2+5,Math.min(WORLD_SIZE/2-5,this.mesh.position.z+Math.sin(a)*r)));
       }
     }
-
-    let spd = this.speed;
-    let dx=0, dz=0;
-
-    if (this.state === 'flee') {
-      spd *= 2.2;
-      dx = this.mesh.position.x - wolfPos.x;
-      dz = this.mesh.position.z - wolfPos.z;
-      const l = Math.sqrt(dx*dx+dz*dz)+0.001;
-      dx/=l; dz/=l;
-    } else if (this.state === 'wander') {
-      dx = this.target.x - this.mesh.position.x;
-      dz = this.target.z - this.mesh.position.z;
-      const l = Math.sqrt(dx*dx+dz*dz);
-      if (l < 1) { this.state='idle'; this.timer=2+Math.random()*4; return; }
-      dx/=l; dz/=l;
+    let spd=this.speed,dx=0,dz=0;
+    if(this.state==='flee'){
+      spd*=2.2;dx=this.mesh.position.x-wolfPos.x;dz=this.mesh.position.z-wolfPos.z;
+      const l=Math.sqrt(dx*dx+dz*dz)+0.001;dx/=l;dz/=l;
+    } else if(this.state==='wander'){
+      dx=this.target.x-this.mesh.position.x;dz=this.target.z-this.mesh.position.z;
+      const l=Math.sqrt(dx*dx+dz*dz);
+      if(l<1){this.state='idle';this.timer=2+Math.random()*4;return;}
+      dx/=l;dz/=l;
     }
-
-    if (dx !== 0 || dz !== 0) {
-      this.mesh.position.x += dx*spd*dt;
-      this.mesh.position.z += dz*spd*dt;
-      const ty = terrainY(this.mesh.position.x, this.mesh.position.z);
-      this.mesh.position.y = Math.max(ty + 0.05, 0.35);
-      this.mesh.rotation.y = Math.atan2(dx, dz);
-      // leg anim
-      this.legPhase += spd * dt * 5;
-      ['leg0','leg2'].forEach(n=>{
-        const l = this.mesh.getObjectByName(n);
-        if (l) l.rotation.x = Math.sin(this.legPhase)*0.5;
-      });
-      ['leg1','leg3'].forEach(n=>{
-        const l = this.mesh.getObjectByName(n);
-        if (l) l.rotation.x = -Math.sin(this.legPhase)*0.5;
-      });
+    if(dx!==0||dz!==0){
+      this.mesh.position.x+=dx*spd*dt;this.mesh.position.z+=dz*spd*dt;
+      this.mesh.position.y=Math.max(terrainY(this.mesh.position.x,this.mesh.position.z)+0.05,0.35);
+      this.mesh.rotation.y=Math.atan2(dx,dz);
+      this.legPhase+=spd*dt*5;
+      ['leg0','leg2'].forEach(n=>{const l=this.mesh.getObjectByName(n);if(l)l.rotation.x=Math.sin(this.legPhase)*0.5;});
+      ['leg1','leg3'].forEach(n=>{const l=this.mesh.getObjectByName(n);if(l)l.rotation.x=-Math.sin(this.legPhase)*0.5;});
     }
-
-    // clamp
-    this.mesh.position.x = Math.max(-WORLD_SIZE/2+5, Math.min(WORLD_SIZE/2-5, this.mesh.position.x));
-    this.mesh.position.z = Math.max(-WORLD_SIZE/2+5, Math.min(WORLD_SIZE/2-5, this.mesh.position.z));
+    this.mesh.position.x=Math.max(-WORLD_SIZE/2+5,Math.min(WORLD_SIZE/2-5,this.mesh.position.x));
+    this.mesh.position.z=Math.max(-WORLD_SIZE/2+5,Math.min(WORLD_SIZE/2-5,this.mesh.position.z));
   }
-  takeDamage(amt) {
-    if (this.dead) return;
-    this.health -= amt;
-    this.state   = 'flee';
-    this.timer   = 8;
-    if (this.health <= 0) {
-      this.dead = true;
-      this.mesh.rotation.z = Math.PI/2;
-      this.mesh.position.y = terrainY(this.mesh.position.x, this.mesh.position.z);
+  takeDamage(amt){
+    if(this.dead) return;
+    this.health-=amt;this.state='flee';this.timer=8;
+    if(this.health<=0){
+      this.dead=true;this.mesh.rotation.z=Math.PI/2;
+      this.mesh.position.y=terrainY(this.mesh.position.x,this.mesh.position.z);
     }
   }
 }
 
-const animals = [];
-for (let i=0;i<DEER_COUNT;  i++) animals.push(new Animal(makeDeer(),   60, 4.5, 'deer'));
-for (let i=0;i<RABBIT_COUNT;i++) animals.push(new Animal(makeRabbit(), 20, 3.8, 'rabbit'));
+const animals=[];
+for(let i=0;i<DEER_COUNT;  i++) animals.push(new Animal(makeDeer(),  60,4.5,'deer'));
+for(let i=0;i<RABBIT_COUNT;i++) animals.push(new Animal(makeRabbit(),20,3.8,'rabbit'));
 
 // ─── Player State ─────────────────────────────────────────────────────────────
-const player = {
-  pos:     new THREE.Vector3(0, terrainY(0,0)+1.8, 0),
-  vel:     new THREE.Vector3(),
-  yaw:     0,
-  pitch:   0,
-  health:  100,
-  hunger:  100,
-  thirst:  100,
-  stamina: 100,
-  grounded:false,
-  kills:   0,
-  day:     1,
-  legPhase:0,
-  attacking:false,
-  attackCooldown:0,
-  howling: false,
-  howlTimer:0,
-  dead:    false,
+const player={
+  pos:new THREE.Vector3(0,terrainY(0,0)+1.8,0),
+  vel:new THREE.Vector3(),
+  yaw:0,pitch:0,
+  health:100,hunger:100,thirst:100,stamina:100,
+  grounded:false,kills:0,day:1,legPhase:0,
+  attacking:false,attackCooldown:0,
+  howling:false,howlTimer:0,dead:false,
 };
 
 // ─── Input ────────────────────────────────────────────────────────────────────
-const keys = {};
-document.addEventListener('keydown', e => { keys[e.code] = true;  });
-document.addEventListener('keyup',   e => { keys[e.code] = false; });
+const keys={};
+document.addEventListener('keydown',e=>{keys[e.code]=true});
+document.addEventListener('keyup',  e=>{keys[e.code]=false});
 
-let mouseX=0, mouseY=0, pointerLocked=false;
-document.addEventListener('mousemove', e => {
-  if (!pointerLocked) return;
-  mouseX += e.movementX * 0.0018;
-  mouseY += e.movementY * 0.0018;
-  mouseY  = Math.max(-0.5, Math.min(0.7, mouseY));
+let mouseX=0,mouseY=0,pointerLocked=false;
+document.addEventListener('mousemove',e=>{
+  if(!pointerLocked) return;
+  mouseX+=e.movementX*0.0018; mouseY+=e.movementY*0.0018;
+  mouseY=Math.max(-0.5,Math.min(0.7,mouseY));
 });
-canvas.addEventListener('click', () => { if (!pointerLocked && !isMobile) canvas.requestPointerLock(); });
-document.addEventListener('pointerlockchange', () => {
-  pointerLocked = document.pointerLockElement === canvas;
-});
+canvas.addEventListener('click',()=>{if(!pointerLocked&&!isMobile) canvas.requestPointerLock();});
+document.addEventListener('pointerlockchange',()=>{ pointerLocked=document.pointerLockElement===canvas; });
 
-// ─── Mobile / Touch Detection ─────────────────────────────────────────────────
-if (isMobile) {
-  document.getElementById('touch-controls').style.display = 'block';
-  document.getElementById('controls').style.display       = 'none';
-  // Prevent default touch scroll/zoom
-  document.body.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+// Mobile setup
+if(isMobile){
+  document.getElementById('touch-controls').style.display='block';
+  document.getElementById('controls').style.display='none';
+  document.body.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
 }
 
-// ─── Virtual Joystick ─────────────────────────────────────────────────────────
-const joystickZone = document.getElementById('joystick-zone');
-const joystickKnob = document.getElementById('joystick-knob');
-const joystick = { active: false, id: -1, startX: 0, startZ: 0, dx: 0, dy: 0 };
+// Joystick
+const joystickZone=document.getElementById('joystick-zone');
+const joystickKnob=document.getElementById('joystick-knob');
+const joystick={active:false,id:-1,startX:0,startZ:0,dx:0,dy:0};
+const JOY_R=45;
+joystickZone.addEventListener('touchstart',e=>{e.preventDefault();const t=e.changedTouches[0],r=joystickZone.getBoundingClientRect();joystick.active=true;joystick.id=t.identifier;joystick.startX=r.left+r.width/2;joystick.startZ=r.top+r.height/2;joystick.dx=0;joystick.dy=0;},{passive:false});
+joystickZone.addEventListener('touchmove',e=>{e.preventDefault();for(const t of e.changedTouches){if(t.identifier!==joystick.id)continue;let dx=t.clientX-joystick.startX,dy=t.clientY-joystick.startZ;const l=Math.sqrt(dx*dx+dy*dy);if(l>JOY_R){dx=dx/l*JOY_R;dy=dy/l*JOY_R;}joystick.dx=dx/JOY_R;joystick.dy=dy/JOY_R;joystickKnob.style.transform=`translate(calc(-50% + ${dx}px),calc(-50% + ${dy}px))`;}},{passive:false});
+const endJoy=e=>{for(const t of e.changedTouches){if(t.identifier===joystick.id){joystick.active=false;joystick.dx=0;joystick.dy=0;joystickKnob.style.transform='translate(-50%,-50%)'}}};
+joystickZone.addEventListener('touchend',endJoy,{passive:false});
+joystickZone.addEventListener('touchcancel',endJoy,{passive:false});
 
-const JOY_RADIUS = 45; // max knob travel in px
+// Look zone
+const lookZone=document.getElementById('look-zone');
+const look={active:false,id:-1,lastX:0,lastY:0};
+lookZone.addEventListener('touchstart',e=>{e.preventDefault();if(look.active)return;const t=e.changedTouches[0];look.active=true;look.id=t.identifier;look.lastX=t.clientX;look.lastY=t.clientY;},{passive:false});
+lookZone.addEventListener('touchmove',e=>{e.preventDefault();for(const t of e.changedTouches){if(t.identifier!==look.id)continue;mouseX+=(t.clientX-look.lastX)*0.004;mouseY+=(t.clientY-look.lastY)*0.004;mouseY=Math.max(-0.5,Math.min(0.7,mouseY));look.lastX=t.clientX;look.lastY=t.clientY;}},{passive:false});
+const endLook=e=>{for(const t of e.changedTouches){if(t.identifier===look.id)look.active=false;}};
+lookZone.addEventListener('touchend',endLook,{passive:false});
+lookZone.addEventListener('touchcancel',endLook,{passive:false});
 
-joystickZone.addEventListener('touchstart', e => {
-  e.preventDefault();
-  const t = e.changedTouches[0];
-  const r = joystickZone.getBoundingClientRect();
-  joystick.active = true;
-  joystick.id     = t.identifier;
-  joystick.startX = r.left + r.width  / 2;
-  joystick.startZ = r.top  + r.height / 2;
-  joystick.dx = 0; joystick.dy = 0;
-}, { passive: false });
-
-joystickZone.addEventListener('touchmove', e => {
-  e.preventDefault();
-  for (const t of e.changedTouches) {
-    if (t.identifier !== joystick.id) continue;
-    let dx = t.clientX - joystick.startX;
-    let dy = t.clientY - joystick.startZ;
-    const len = Math.sqrt(dx*dx+dy*dy);
-    if (len > JOY_RADIUS) { dx = dx/len*JOY_RADIUS; dy = dy/len*JOY_RADIUS; }
-    joystick.dx = dx / JOY_RADIUS;
-    joystick.dy = dy / JOY_RADIUS;
-    joystickKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
-  }
-}, { passive: false });
-
-const endJoystick = e => {
-  for (const t of e.changedTouches) {
-    if (t.identifier !== joystick.id) continue;
-    joystick.active = false; joystick.dx = 0; joystick.dy = 0;
-    joystickKnob.style.transform = 'translate(-50%,-50%)';
-  }
-};
-joystickZone.addEventListener('touchend',    endJoystick, { passive: false });
-joystickZone.addEventListener('touchcancel', endJoystick, { passive: false });
-
-// ─── Touch Look (right side of screen) ────────────────────────────────────────
-const lookZone = document.getElementById('look-zone');
-const look = { active: false, id: -1, lastX: 0, lastY: 0 };
-
-lookZone.addEventListener('touchstart', e => {
-  e.preventDefault();
-  if (look.active) return;
-  const t = e.changedTouches[0];
-  look.active = true; look.id = t.identifier;
-  look.lastX  = t.clientX; look.lastY = t.clientY;
-}, { passive: false });
-
-lookZone.addEventListener('touchmove', e => {
-  e.preventDefault();
-  for (const t of e.changedTouches) {
-    if (t.identifier !== look.id) continue;
-    const dx = t.clientX - look.lastX;
-    const dy = t.clientY - look.lastY;
-    mouseX += dx * 0.004;
-    mouseY += dy * 0.004;
-    mouseY  = Math.max(-0.5, Math.min(0.7, mouseY));
-    look.lastX = t.clientX; look.lastY = t.clientY;
-  }
-}, { passive: false });
-
-const endLook = e => {
-  for (const t of e.changedTouches) {
-    if (t.identifier === look.id) look.active = false;
-  }
-};
-lookZone.addEventListener('touchend',    endLook, { passive: false });
-lookZone.addEventListener('touchcancel', endLook, { passive: false });
-
-// ─── Touch Action Buttons ──────────────────────────────────────────────────────
-const touchState = { attack: false, howl: false, bond: false, sprint: false };
-
-function bindBtn(id, key) {
-  const el = document.getElementById(id);
-  el.addEventListener('touchstart', e => { e.preventDefault(); touchState[key] = true;  el.classList.add('pressed');    }, { passive: false });
-  el.addEventListener('touchend',   e => { e.preventDefault(); touchState[key] = false; el.classList.remove('pressed'); }, { passive: false });
-  el.addEventListener('touchcancel',e => { touchState[key] = false; el.classList.remove('pressed'); }, { passive: false });
+// Touch buttons
+const touchState={attack:false,howl:false,bond:false,sprint:false};
+function bindBtn(id,key){
+  const el=document.getElementById(id);
+  el.addEventListener('touchstart',e=>{e.preventDefault();touchState[key]=true; el.classList.add('pressed');},{passive:false});
+  el.addEventListener('touchend',  e=>{e.preventDefault();touchState[key]=false;el.classList.remove('pressed');},{passive:false});
+  el.addEventListener('touchcancel',e=>{touchState[key]=false;el.classList.remove('pressed');},{passive:false});
 }
-bindBtn('btn-attack', 'attack');
-bindBtn('btn-howl',   'howl');
-bindBtn('btn-bond',   'bond');
-bindBtn('btn-sprint', 'sprint');
+bindBtn('btn-attack','attack'); bindBtn('btn-howl','howl');
+bindBtn('btn-bond','bond');     bindBtn('btn-sprint','sprint');
 
-// ─── HUD refs ─────────────────────────────────────────────────────────────────
+// ─── HUD Refs ─────────────────────────────────────────────────────────────────
 const healthFill  = document.getElementById('health-fill');
 const hungerFill  = document.getElementById('hunger-fill');
 const thirstFill  = document.getElementById('thirst-fill');
@@ -954,398 +799,371 @@ const vigEl       = document.getElementById('vignette');
 const howlRing    = document.getElementById('howl-ring');
 const deathScreen = document.getElementById('death');
 const deathReason = document.getElementById('death-reason');
+let notifTimer=0;
+function showNotif(msg){ notifEl.textContent=msg; notifEl.classList.add('show'); notifTimer=3.5; }
 
-let notifTimer = 0;
-function showNotif(msg) {
-  notifEl.textContent = msg;
-  notifEl.classList.add('show');
-  notifTimer = 3;
+// ─── Day / Night Cycle ────────────────────────────────────────────────────────
+let timeOfDay=0.25;
+const skyDawn =new THREE.Color(0xffa060), skyNoon=new THREE.Color(0x87ceeb);
+const skyDusk =new THREE.Color(0xff7040), skyNight=new THREE.Color(0x050818);
+function lerpColor(a,b,t){return new THREE.Color().lerpColors(a,b,t)}
+function skyColor(t){
+  if(t<0.25) return lerpColor(skyNight,skyDawn,t/0.25);
+  if(t<0.5)  return lerpColor(skyDawn,skyNoon,(t-0.25)/0.25);
+  if(t<0.75) return lerpColor(skyNoon,skyDusk,(t-0.5)/0.25);
+  return lerpColor(skyDusk,skyNight,(t-0.75)/0.25);
 }
-
-let vigTimer = 0;
-function flashHurt() {
-  vigEl.classList.add('hurt');
-  vigTimer = 1.2;
-}
-
-// ─── Day/night cycle ─────────────────────────────────────────────────────────
-let timeOfDay = 0.25; // 0=midnight, 0.25=dawn, 0.5=noon, 0.75=dusk, 1=midnight
-const skyDawn   = new THREE.Color(0xffa060);
-const skyNoon   = new THREE.Color(0x87ceeb);
-const skyDusk   = new THREE.Color(0xff7040);
-const skyNight  = new THREE.Color(0x050818);
-
-function lerpColor(a,b,t) { return new THREE.Color().lerpColors(a,b,t); }
-function skyColor(t) {
-  if (t < 0.25) return lerpColor(skyNight, skyDawn,  t/0.25);
-  if (t < 0.5)  return lerpColor(skyDawn,  skyNoon,  (t-0.25)/0.25);
-  if (t < 0.75) return lerpColor(skyNoon,  skyDusk,  (t-0.5)/0.25);
-  return lerpColor(skyDusk, skyNight, (t-0.75)/0.25);
-}
-
-function updateSky(dt) {
-  timeOfDay = (timeOfDay + dt/DAY_LENGTH) % 1;
-
-  const sc   = skyColor(timeOfDay);
-  const sc2  = skyColor((timeOfDay+0.5)%1);
-  scene.fog.color.copy(sc);
-  renderer.setClearColor(sc);
-
-  // Paint sphere verts
-  const pos = skyGeo.attributes.position;
-  const col = skyGeo.attributes.color;
-  for (let i=0;i<pos.count;i++) {
-    const y = pos.getY(i);
-    const t = Math.max(0,Math.min(1,(y+10)/700));
-    const c = lerpColor(sc, new THREE.Color(sc).lerp(sc2,0.3), t);
-    col.setXYZ(i, c.r, c.g, c.b);
+function updateSky(dt){
+  timeOfDay=(timeOfDay+dt/DAY_LENGTH)%1;
+  const sc=skyColor(timeOfDay), sc2=skyColor((timeOfDay+0.5)%1);
+  scene.fog.color.copy(sc); renderer.setClearColor(sc);
+  const pos=skyGeo.attributes.position, col=skyGeo.attributes.color;
+  for(let i=0;i<pos.count;i++){
+    const y=pos.getY(i),t=Math.max(0,Math.min(1,(y+10)/700));
+    const c=lerpColor(sc,new THREE.Color(sc).lerp(sc2,0.3),t);
+    col.setXYZ(i,c.r,c.g,c.b);
   }
-  col.needsUpdate = true;
-
-  // Sun arc
-  const sunAngle = (timeOfDay - 0.25) * Math.PI * 2;
-  sun.position.set(Math.cos(sunAngle)*200, Math.sin(sunAngle)*200, -80);
-  sun.intensity = Math.max(0, Math.sin(sunAngle)) * 2.8;
-
-  // Moon
-  moonLight.position.set(-Math.cos(sunAngle)*200, -Math.sin(sunAngle)*200, 80);
-  moonLight.intensity = Math.max(0, -Math.sin(sunAngle)) * 0.5;
-
-  // Stars visible at night
-  starMesh.material.opacity = Math.max(0, -Math.sin(sunAngle)*1.4);
-  starMesh.material.transparent = true;
-
-  ambientLight.intensity = 0.3 + Math.max(0,Math.sin(sunAngle))*0.5;
-
-  // Day counter
-  const dayNum   = Math.floor(timeOfDay * 24);
-  let   timeStr  = '';
-  if (dayNum <  5) timeStr = 'Night';
-  else if (dayNum < 8)  timeStr = 'Dawn';
-  else if (dayNum < 12) timeStr = 'Morning';
-  else if (dayNum < 14) timeStr = 'Noon';
-  else if (dayNum < 17) timeStr = 'Afternoon';
-  else if (dayNum < 20) timeStr = 'Dusk';
-  else timeStr = 'Night';
-  dayLabel.textContent = timeStr + ' · Day ' + player.day;
+  col.needsUpdate=true;
+  const sunAngle=(timeOfDay-0.25)*Math.PI*2;
+  sun.position.set(Math.cos(sunAngle)*200,Math.sin(sunAngle)*200,-80);
+  sun.intensity=Math.max(0,Math.sin(sunAngle))*3.2;
+  // Sun disc follows sun
+  sunDisc.position.copy(sun.position).normalize().multiplyScalar(650);
+  sunDisc.lookAt(0,0,0);
+  sunHalo.position.copy(sunDisc.position).normalize().multiplyScalar(648);
+  sunHalo.lookAt(0,0,0);
+  sunDisc.material.opacity=Math.max(0,Math.sin(sunAngle))*0.95;
+  sunHalo.material.opacity=Math.max(0,Math.sin(sunAngle))*0.22;
+  moonLight.position.set(-Math.cos(sunAngle)*200,-Math.sin(sunAngle)*200,80);
+  moonLight.intensity=Math.max(0,-Math.sin(sunAngle))*0.55;
+  moonDisc.position.copy(moonLight.position).normalize().multiplyScalar(640);
+  moonDisc.lookAt(0,0,0);
+  moonDisc.material.opacity=Math.max(0,-Math.sin(sunAngle))*0.9;
+  starMesh.material.opacity=Math.max(0,-Math.sin(sunAngle)*1.4);
+  starMesh.material.transparent=true;
+  ambientLight.intensity=0.25+Math.max(0,Math.sin(sunAngle))*0.55;
+  // Cloud opacity with time
+  const cloudAlpha=0.3+Math.max(0,Math.sin(sunAngle))*0.35;
+  clouds.forEach(c=>{ c.material.opacity=cloudAlpha; });
+  const dayNum=Math.floor(timeOfDay*24);
+  let ts='Night';
+  if(dayNum>=5&&dayNum<8) ts='Dawn';
+  else if(dayNum>=8&&dayNum<12) ts='Morning';
+  else if(dayNum>=12&&dayNum<14) ts='Noon';
+  else if(dayNum>=14&&dayNum<17) ts='Afternoon';
+  else if(dayNum>=17&&dayNum<20) ts='Dusk';
+  dayLabel.textContent=ts+' · Day '+player.day;
 }
 
-// ─── Water detection ──────────────────────────────────────────────────────────
-function isInWater(pos) { return terrainY(pos.x, pos.z) < 0.32; }
+// ─── Utilities ────────────────────────────────────────────────────────────────
+function isInWater(pos){ return terrainY(pos.x,pos.z)<0.32; }
 
 // ─── Howl ─────────────────────────────────────────────────────────────────────
-function triggerHowl() {
-  if (player.howling) return;
-  player.howling  = true;
-  player.howlTimer= 2.2;
-  howlRing.classList.remove('active');
-  void howlRing.offsetWidth;
-  howlRing.classList.add('active');
-  showNotif('You howl into the darkness...');
-  // Mate comes closer when you howl
-  mate.state = 'follow';
-  mate.timer = 10;
-  // Scare animals
-  animals.forEach(a => {
-    if (!a.dead && a.mesh.position.distanceTo(player.pos) < HOWL_RADIUS) {
-      a.state = 'flee';
-      a.timer = 6;
-    }
-  });
+function triggerHowl(){
+  if(player.howling) return;
+  player.howling=true; player.howlTimer=2.2;
+  howlRing.classList.remove('active'); void howlRing.offsetWidth; howlRing.classList.add('active');
+  showNotif('Your howl echoes across the valley…');
+  mate.state='follow'; mate.timer=10;
+  animals.forEach(a=>{ if(!a.dead&&a.mesh.position.distanceTo(player.pos)<HOWL_RADIUS){a.state='flee';a.timer=6;} });
 }
 
 // ─── Attack ───────────────────────────────────────────────────────────────────
-function tryAttack() {
-  if (player.attackCooldown > 0 || player.stamina < 8) return;
-  player.attacking      = true;
-  player.attackCooldown = 0.6;
-  player.stamina        = Math.max(0, player.stamina - 8);
-
-  let hit = false;
-  animals.forEach(a => {
-    if (a.dead) return;
-    const d = a.mesh.position.distanceTo(player.pos);
-    if (d < ATTACK_RANGE) {
-      const dmg = 18 + Math.random()*12;
-      a.takeDamage(dmg);
-      hit = true;
-      if (a.dead) {
-        player.kills++;
-        killsLabel.textContent = 'Kills: ' + player.kills;
-        player.hunger = Math.min(100, player.hunger + (a.type==='deer' ? 45 : 18));
-        showNotif(a.type === 'deer' ? 'You bring down a deer. The pack will feast.' : 'A rabbit caught. Quick meal.');
-        if (player.kills === 5)  { packLabel.textContent='Pack: Beta Wolf'; showNotif('You earn your place. Pack: Beta.'); }
-        if (player.kills === 15) { packLabel.textContent='Pack: Alpha Wolf'; showNotif('The pack bows. You are Alpha.'); }
+function tryAttack(){
+  if(player.attackCooldown>0||player.stamina<8) return;
+  player.attacking=true; player.attackCooldown=0.6;
+  player.stamina=Math.max(0,player.stamina-8);
+  let hit=false;
+  animals.forEach(a=>{
+    if(a.dead) return;
+    if(a.mesh.position.distanceTo(player.pos)<ATTACK_RANGE){
+      const dmg=18+Math.random()*12; a.takeDamage(dmg); hit=true;
+      if(a.dead){
+        player.kills++; killsLabel.textContent='Kills: '+player.kills;
+        player.hunger=Math.min(100,player.hunger+(a.type==='deer'?45:18));
+        showNotif(a.type==='deer'?'You bring down a deer. Meat for the pack.':'A rabbit caught. Quick meal.');
+        if(player.kills===5)  { updatePackLabel(); showNotif('You earn your place. Pack: Beta.'); }
+        if(player.kills===15) { packLabel.textContent='Pack: Alpha Wolf'; showNotif('The pack bows. You are Alpha.'); }
       }
     }
   });
-  if (!hit) {
-    // Drink if in water
-    if (isInWater(player.pos)) {
-      player.thirst = Math.min(100, player.thirst + 35);
-      showNotif('You drink from the stream. Refreshing.');
-    }
-  }
+  if(!hit&&isInWater(player.pos)){ player.thirst=Math.min(100,player.thirst+35); showNotif('You drink from the stream.'); }
 }
 
-// ─── Physics & movement ───────────────────────────────────────────────────────
-const cameraOffset = new THREE.Vector3(0, 1.8, -4.5);
+// ─── Player Update ────────────────────────────────────────────────────────────
+const cameraOffset = new THREE.Vector3(0,1.8,-4.5);
 const lookTarget   = new THREE.Vector3();
 
-function updatePlayer(dt) {
-  if (player.dead) return;
-
-  // Yaw from mouse
-  player.yaw = -mouseX;
-
-  // Direction
-  const fwd  = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
-  const right= new THREE.Vector3( Math.cos(player.yaw), 0, -Math.sin(player.yaw));
-
-  const sprinting = keys['ShiftLeft'] || keys['ShiftRight'] || touchState.sprint;
-  const moving    = keys['KeyW'] || keys['KeyS'] || keys['KeyA'] || keys['KeyD'] || joystick.active;
-
-  let spd = WOLF_SPEED * (sprinting && player.stamina > 0 ? SPRINT_MULT : 1.0);
-  let move = new THREE.Vector3();
-
-  if (keys['KeyW']) move.addScaledVector(fwd, 1);
-  if (keys['KeyS']) move.addScaledVector(fwd,-1);
-  if (keys['KeyD']) move.addScaledVector(right,1);
-  if (keys['KeyA']) move.addScaledVector(right,-1);
-
-  // Joystick — forward/back mapped to camera-relative direction
-  if (joystick.active) {
-    move.addScaledVector(fwd,  -joystick.dy);
-    move.addScaledVector(right, joystick.dx);
-  }
-
-  if (move.lengthSq() > 0) { move.normalize(); }
-  player.vel.x = move.x * spd;
-  player.vel.z = move.z * spd;
-
-  // Gravity
-  const ty = terrainY(player.pos.x, player.pos.z) + 0.9;
-  if (player.pos.y > ty) {
-    player.vel.y -= GRAVITY * dt;
-  } else {
-    player.vel.y  = 0;
-    player.pos.y  = ty;
-    player.grounded = true;
-  }
-
-  player.pos.addScaledVector(player.vel, dt);
-
-  // World bounds
-  player.pos.x = Math.max(-WORLD_SIZE/2+5, Math.min(WORLD_SIZE/2-5, player.pos.x));
-  player.pos.z = Math.max(-WORLD_SIZE/2+5, Math.min(WORLD_SIZE/2-5, player.pos.z));
-
+function updatePlayer(dt){
+  if(player.dead) return;
+  player.yaw=-mouseX;
+  const fwd  = new THREE.Vector3(-Math.sin(player.yaw),0,-Math.cos(player.yaw));
+  const right= new THREE.Vector3( Math.cos(player.yaw),0,-Math.sin(player.yaw));
+  const sprinting=keys['ShiftLeft']||keys['ShiftRight']||touchState.sprint;
+  const moving   =keys['KeyW']||keys['KeyS']||keys['KeyA']||keys['KeyD']||joystick.active;
+  const spd=WOLF_SPEED*(sprinting&&player.stamina>0?SPRINT_MULT:1.0);
+  const move=new THREE.Vector3();
+  if(keys['KeyW']) move.addScaledVector(fwd, 1);
+  if(keys['KeyS']) move.addScaledVector(fwd,-1);
+  if(keys['KeyD']) move.addScaledVector(right,1);
+  if(keys['KeyA']) move.addScaledVector(right,-1);
+  if(joystick.active){ move.addScaledVector(fwd,-joystick.dy); move.addScaledVector(right,joystick.dx); }
+  if(move.lengthSq()>0) move.normalize();
+  player.vel.x=move.x*spd; player.vel.z=move.z*spd;
+  const ty=terrainY(player.pos.x,player.pos.z)+0.9;
+  if(player.pos.y>ty){ player.vel.y-=GRAVITY*dt; } else { player.vel.y=0; player.pos.y=ty; player.grounded=true; }
+  player.pos.addScaledVector(player.vel,dt);
+  player.pos.x=Math.max(-WORLD_SIZE/2+5,Math.min(WORLD_SIZE/2-5,player.pos.x));
+  player.pos.z=Math.max(-WORLD_SIZE/2+5,Math.min(WORLD_SIZE/2-5,player.pos.z));
   // Stamina
-  if (sprinting && moving) {
-    player.stamina = Math.max(0, player.stamina - 18*dt);
-  } else {
-    player.stamina = Math.min(100, player.stamina + 12*dt);
-  }
-
+  if(sprinting&&moving){ player.stamina=Math.max(0,player.stamina-18*dt); } else { player.stamina=Math.min(100,player.stamina+12*dt); }
   // Vitals decay
-  const baseRate = 1.0 / 160;
-  player.hunger = Math.max(0, player.hunger - baseRate*dt*100);
-  player.thirst = Math.max(0, player.thirst - baseRate*1.4*dt*100);
-
-  // Auto-drink in water
-  if (isInWater(player.pos)) {
-    player.thirst = Math.min(100, player.thirst + 6*dt);
-  }
-
-  // Starvation / dehydration damage
-  if (player.hunger  < 10) player.health = Math.max(0, player.health - 4*dt);
-  if (player.thirst  < 10) player.health = Math.max(0, player.health - 6*dt);
-  if (player.hunger  > 50 && player.thirst > 50) player.health = Math.min(100, player.health + 2*dt);
-
+  player.hunger=Math.max(0,player.hunger-dt*100/160);
+  player.thirst=Math.max(0,player.thirst-dt*100/114);
+  if(isInWater(player.pos)) player.thirst=Math.min(100,player.thirst+6*dt);
+  if(player.hunger<10) player.health=Math.max(0,player.health-4*dt);
+  if(player.thirst<10) player.health=Math.max(0,player.health-6*dt);
+  if(player.hunger>50&&player.thirst>50) player.health=Math.min(100,player.health+2*dt);
   // Death
-  if (player.health <= 0 && !player.dead) {
-    player.dead = true;
-    let reason = 'The wilderness claimed you.';
-    if (player.hunger < 10)  reason = 'Starvation claimed your spirit.';
-    if (player.thirst < 10)  reason = 'Thirst consumed you.';
-    deathReason.textContent = reason;
-    deathScreen.classList.add('show');
-    document.exitPointerLock();
+  if(player.health<=0&&!player.dead){
+    player.dead=true;
+    deathReason.textContent=player.hunger<10?'Starvation claimed your spirit.':player.thirst<10?'Thirst consumed you.':'The wilderness took you.';
+    deathScreen.classList.add('show'); document.exitPointerLock();
   }
-
-  // Attack cooldown
-  if (player.attackCooldown > 0) player.attackCooldown -= dt;
-  if (player.attacking && player.attackCooldown < 0.3) player.attacking = false;
-
-  // Howl
-  if (keys['Space'] && !player.howling) triggerHowl();
-  if (player.howling) {
-    player.howlTimer -= dt;
-    if (player.howlTimer < 0) player.howling = false;
-  }
-
-  // E — attack or drink
-  if (keys['KeyE'] || touchState.attack) tryAttack();
-
-  // Howl via touch
-  if (touchState.howl && !player.howling) { touchState.howl = false; triggerHowl(); }
-
-  // F — bond / mate
-  packState.eCooldown = Math.max(0, packState.eCooldown - dt);
-  if ((keys['KeyF'] && !fWasDown) || touchState.bond) {
-    fWasDown = true; touchState.bond = false; tryBondOrMate();
-  }
-  if (!keys['KeyF']) fWasDown = false;
-
-  // Proximity prompt for mate
-  const mateDist = mateMesh.position.distanceTo(player.pos);
-  if (mateDist < BOND_RANGE && !packState.mated && packState.bondLevel < 3 && notifTimer <= 0) {
-    notifEl.textContent = 'Press F to bond with her';
-    notifEl.classList.add('show');
-  } else if (mateDist < BOND_RANGE && packState.mated && !packState.pregnant && notifTimer <= 0) {
-    notifEl.textContent = 'Press F to start a litter';
+  // Cooldowns
+  if(player.attackCooldown>0) player.attackCooldown-=dt;
+  if(player.attacking&&player.attackCooldown<0.3) player.attacking=false;
+  if(player.howling){ player.howlTimer-=dt; if(player.howlTimer<0) player.howling=false; }
+  // Actions
+  if(keys['KeyE']||touchState.attack) tryAttack();
+  if(touchState.howl&&!player.howling){ touchState.howl=false; triggerHowl(); }
+  if(keys['Space']&&!player.howling) triggerHowl();
+  packState.eCooldown=Math.max(0,packState.eCooldown-dt);
+  if((keys['KeyF']&&!fWasDown)||touchState.bond){ fWasDown=true; touchState.bond=false; tryBondOrMate(); }
+  if(!keys['KeyF']) fWasDown=false;
+  // Proximity prompt
+  const mateDist=mateMesh.position.distanceTo(player.pos);
+  if(mateDist<BOND_RANGE&&notifTimer<=0){
+    if(!packState.mated&&packState.bondLevel<3) notifEl.textContent='Press F to bond with her';
+    else if(packState.mated&&!packState.pregnant) notifEl.textContent='Press F to start a litter';
+    else return;
     notifEl.classList.add('show');
   }
-
   // Wolf mesh
-  wolf.position.copy(player.pos);
-  wolf.position.y -= 0.9;
-  if (move.lengthSq() > 0) {
-    wolf.rotation.y = Math.atan2(move.x, move.z);
-  }
-
-  // Walk animation
-  if (moving) {
-    player.legPhase += spd * dt * 3.5;
-    ['leg0','leg2'].forEach(n=>{
-      const l = wolf.getObjectByName(n);
-      if (l) l.rotation.x = Math.sin(player.legPhase)*0.65;
-    });
-    ['leg1','leg3'].forEach(n=>{
-      const l = wolf.getObjectByName(n);
-      if (l) l.rotation.x = -Math.sin(player.legPhase)*0.65;
-    });
-    // Tail wag when running
-    const tail = wolf.getObjectByName('tail');
-    if (tail) tail.rotation.y = Math.sin(player.legPhase*2)*0.4;
+  wolf.position.copy(player.pos); wolf.position.y-=0.9;
+  if(move.lengthSq()>0) wolf.rotation.y=Math.atan2(move.x,move.z);
+  if(moving){
+    player.legPhase+=spd*dt*3.5;
+    ['leg0','leg2'].forEach(n=>{const l=wolf.getObjectByName(n);if(l)l.rotation.x=Math.sin(player.legPhase)*0.65;});
+    ['leg1','leg3'].forEach(n=>{const l=wolf.getObjectByName(n);if(l)l.rotation.x=-Math.sin(player.legPhase)*0.65;});
+    const tail=wolf.getObjectByName('tail'); if(tail) tail.rotation.y=Math.sin(player.legPhase*2)*0.4;
   } else {
-    // Idle breathing
-    const br = Math.sin(Date.now()*0.002)*0.03;
-    wolf.children[0] && (wolf.children[0].scale.y = 0.85 + br);
+    const br=Math.sin(Date.now()*0.002)*0.025;
+    if(wolf.children[0]) wolf.children[0].scale.y=0.88+br;
   }
-
-  // Camera — 3rd person chase
-  const camPos = new THREE.Vector3();
-  const offset = cameraOffset.clone()
-    .applyEuler(new THREE.Euler(mouseY*0.6, player.yaw, 0, 'YXZ'));
-  camPos.copy(player.pos).add(offset);
-
-  // Don't go underground
-  const camTY = terrainY(camPos.x, camPos.z) + 0.4;
-  if (camPos.y < camTY) camPos.y = camTY;
-
-  camera.position.lerp(camPos, 0.12);
-  lookTarget.set(player.pos.x, player.pos.y + 0.8, player.pos.z);
+  // Camera
+  const offset=cameraOffset.clone().applyEuler(new THREE.Euler(mouseY*0.6,player.yaw,0,'YXZ'));
+  const camPos=new THREE.Vector3().copy(player.pos).add(offset);
+  const camTY=terrainY(camPos.x,camPos.z)+0.4;
+  if(camPos.y<camTY) camPos.y=camTY;
+  camera.position.lerp(camPos,0.12);
+  lookTarget.set(player.pos.x,player.pos.y+0.8,player.pos.z);
   camera.lookAt(lookTarget);
-
   // HUD
-  healthFill.style.width  = player.health  + '%';
-  hungerFill.style.width  = player.hunger  + '%';
-  thirstFill.style.width  = player.thirst  + '%';
-  staminaFill.style.width = player.stamina + '%';
-
-  // Low health vignette
-  if (player.health < 30) {
-    vigEl.classList.add('hurt');
-  } else {
-    vigEl.classList.remove('hurt');
-  }
+  healthFill.style.width =player.health +'%';
+  hungerFill.style.width =player.hunger +'%';
+  thirstFill.style.width =player.thirst +'%';
+  staminaFill.style.width=player.stamina+'%';
+  if(player.health<30){ const pulse=Math.sin(Date.now()*0.004)*0.5+0.5; vigEl.style.background=`radial-gradient(ellipse at center,transparent 40%,rgba(120,0,0,${0.3+pulse*0.3}) 100%)`; }
+  else { vigEl.style.background=''; vigEl.classList.remove('hurt'); }
 }
 
 // ─── Respawn ──────────────────────────────────────────────────────────────────
-function respawn() {
-  player.health  = 100; player.hunger = 100;
-  player.thirst  = 100; player.stamina=100;
-  player.kills   = 0; player.day = 1; player.dead = false;
-  player.pos.set(0, terrainY(0,0)+1.8, 0);
-  player.vel.set(0,0,0);
-  killsLabel.textContent = 'Kills: 0';
-  // Reset pack
-  packState.bondLevel = 0; packState.mated = false;
-  packState.pregnant  = false; packState.gestationTimer = 0;
-  packState.pups.forEach(p => scene.remove(p.mesh));
-  packState.pups.length = 0;
-  mateMesh.position.set(mateStartX, terrainY(mateStartX, mateStartZ), mateStartZ);
-  mate.state = 'wander';
-  pupLabel.style.display = 'none';
-  updatePackLabel();
+function respawn(){
+  player.health=100;player.hunger=100;player.thirst=100;player.stamina=100;
+  player.kills=0;player.day=1;player.dead=false;
+  player.pos.set(0,terrainY(0,0)+1.8,0); player.vel.set(0,0,0);
+  killsLabel.textContent='Kills: 0';
+  packState.bondLevel=0;packState.mated=false;packState.pregnant=false;packState.gestationTimer=0;
+  packState.pups.forEach(p=>scene.remove(p.mesh)); packState.pups.length=0;
+  mateMesh.position.set(mateStartX,terrainY(mateStartX,mateStartZ),mateStartZ);
+  mate.state='wander'; pupLabel.style.display='none'; updatePackLabel();
   deathScreen.classList.remove('show');
-  // Revive animals
-  animals.forEach(a => {
-    a.dead   = false;
-    a.health = a.maxHealth;
-    a.state  = 'idle';
-    a.mesh.rotation.z = 0;
-    const x = (Math.random()-0.5)*WORLD_SIZE*0.8;
-    const z = (Math.random()-0.5)*WORLD_SIZE*0.8;
-    a.mesh.position.set(x, terrainY(x,z)+0.05, z);
-  });
+}
+document.getElementById('respawn-btn').addEventListener('click',respawn);
+
+// ─── Wolf Customizer ─────────────────────────────────────────────────────────
+const custEl        = document.getElementById('customizer');
+const custCanvasEl  = document.getElementById('cust-canvas');
+const nameBadge     = document.getElementById('wolf-name-badge');
+const nameInput     = document.getElementById('wolf-name-input');
+
+let custRenderer = null, custScene = null, custCamera = null, custWolf = null, custAnimId = null;
+
+function initCustRenderer(){
+  if(custRenderer) return;
+  custRenderer = new THREE.WebGLRenderer({ canvas:custCanvasEl, antialias:true, alpha:true });
+  custRenderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  custRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+  custRenderer.toneMappingExposure = 1.1;
+  custRenderer.outputColorSpace = THREE.SRGBColorSpace;
+  custRenderer.setClearColor(0x000000,0);
+  custScene  = new THREE.Scene();
+  custCamera = new THREE.PerspectiveCamera(45,1,0.1,100);
+  custCamera.position.set(0,1.2,5.5); custCamera.lookAt(0,0.8,0);
+  custScene.add(new THREE.AmbientLight(0x888888,1.0));
+  const dl=new THREE.DirectionalLight(0xfff0d0,2.5); dl.position.set(3,5,4); custScene.add(dl);
+  const fill=new THREE.DirectionalLight(0x8090c0,0.7); fill.position.set(-3,2,-2); custScene.add(fill);
+  const rim=new THREE.DirectionalLight(0xc0a060,0.5); rim.position.set(0,-1,4); custScene.add(rim);
+  // Ground plate
+  const gp=new THREE.Mesh(new THREE.CircleGeometry(2.5,32),new THREE.MeshStandardMaterial({color:0x2a3820,roughness:0.9}));
+  gp.rotation.x=-Math.PI/2; custScene.add(gp);
 }
 
-document.getElementById('respawn-btn').addEventListener('click', respawn);
+function rebuildCustWolf(){
+  if(!custScene) return;
+  if(custWolf){ custScene.remove(custWolf); custWolf=null; }
+  custWolf = makeWolf(wolfConfig);
+  custWolf.scale.setScalar(wolfConfig.scale*1.15);
+  custWolf.position.set(0,0,0);
+  custScene.add(custWolf);
+}
 
-// ─── Splash start ─────────────────────────────────────────────────────────────
-const splash = document.getElementById('splash');
-document.getElementById('start-btn').addEventListener('click', () => {
-  splash.classList.add('hidden');
-  canvas.requestPointerLock();
-  setTimeout(() => splash.style.display='none', 1100);
+function animateCust(){
+  custAnimId = requestAnimationFrame(animateCust);
+  if(!custWolf) return;
+  custWolf.rotation.y += 0.008;
+  const tail=custWolf.getObjectByName('tail');
+  if(tail) tail.rotation.y=Math.sin(Date.now()*0.003)*0.5;
+  const w=custCanvasEl.clientWidth, h=custCanvasEl.clientHeight;
+  if(w&&h){ custRenderer.setSize(w,h,false); custCamera.aspect=w/h; custCamera.updateProjectionMatrix(); }
+  custRenderer.render(custScene, custCamera);
+}
+
+function openCustomizer(){
+  custEl.classList.add('open');
+  initCustRenderer();
+  rebuildCustWolf();
+  if(!custAnimId) animateCust();
+}
+function closeCustomizer(){
+  custEl.classList.remove('open');
+  if(custAnimId){ cancelAnimationFrame(custAnimId); custAnimId=null; }
+}
+
+document.getElementById('cust-close').addEventListener('click', closeCustomizer);
+document.getElementById('customize-btn').addEventListener('click', openCustomizer);
+
+// Build coat grid
+const coatGrid = document.getElementById('coat-grid');
+COAT_PRESETS.forEach((p,i)=>{
+  const sw=document.createElement('div');
+  sw.className='coat-swatch'+(i===0?' active':'');
+  // Gradient using base+saddle colors
+  const bc=new THREE.Color(p.base), sc2=new THREE.Color(p.saddle);
+  const bHex='#'+bc.getHexString(), sHex='#'+sc2.getHexString();
+  sw.style.background=`linear-gradient(160deg, ${sHex} 0%, ${bHex} 60%, #${new THREE.Color(p.belly).getHexString()} 100%)`;
+  sw.innerHTML=`<span>${p.name}</span>`;
+  sw.addEventListener('click',()=>{
+    document.querySelectorAll('.coat-swatch').forEach(s=>s.classList.remove('active'));
+    sw.classList.add('active');
+    wolfConfig.preset=i;
+    wolfConfig.eyeIdx = COAT_PRESETS[i].eye ? EYE_COLORS.findIndex(e=>e.color===COAT_PRESETS[i].eye) : wolfConfig.eyeIdx;
+    rebuildCustWolf();
+    // Sync eye selection
+    document.querySelectorAll('.eye-dot').forEach((d,di)=>d.classList.toggle('active',di===wolfConfig.eyeIdx));
+  });
+  coatGrid.appendChild(sw);
 });
 
-// ─── Notification timer ───────────────────────────────────────────────────────
-// ─── Main loop ────────────────────────────────────────────────────────────────
-let lastTime = 0;
+// Eye grid
+const eyeGrid = document.getElementById('eye-grid');
+EYE_COLORS.forEach((e,i)=>{
+  const dot=document.createElement('div');
+  dot.className='eye-dot'+(i===0?' active':'');
+  dot.style.background='#'+new THREE.Color(e.color).getHexString();
+  dot.title=e.label;
+  dot.addEventListener('click',()=>{
+    document.querySelectorAll('.eye-dot').forEach(d=>d.classList.remove('active'));
+    dot.classList.add('active');
+    wolfConfig.eyeIdx=i;
+    rebuildCustWolf();
+  });
+  eyeGrid.appendChild(dot);
+});
 
-// Day tick
-let dayTick = 0;
-const prevDay = { t: 0 };
+// Size buttons
+document.querySelectorAll('.size-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.size-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    wolfConfig.scale=parseFloat(btn.dataset.size);
+    rebuildCustWolf();
+  });
+});
 
-function loop(now) {
+// Name input
+nameInput.addEventListener('input',()=>{
+  wolfConfig.name = nameInput.value.trim() || 'Wolf';
+  nameBadge.textContent = wolfConfig.name;
+});
+
+// Confirm
+document.getElementById('cust-confirm').addEventListener('click',()=>{
+  closeCustomizer();
+  // Rebuild player wolf with new config
+  scene.remove(wolf);
+  wolf = makeWolf(wolfConfig);
+  wolf.scale.setScalar(wolfConfig.scale*1.15);
+  scene.add(wolf);
+});
+
+// ─── Splash ───────────────────────────────────────────────────────────────────
+const splash = document.getElementById('splash');
+document.getElementById('start-btn').addEventListener('click',()=>{
+  splash.classList.add('hidden');
+  if(!isMobile) canvas.requestPointerLock();
+  setTimeout(()=>splash.style.display='none',1100);
+});
+
+// ─── Main Loop ────────────────────────────────────────────────────────────────
+let lastTime=0, dayTick=0;
+
+function loop(now){
   requestAnimationFrame(loop);
-  const dt = Math.min((now - lastTime) / 1000, 0.05);
-  lastTime  = now;
+  const dt=Math.min((now-lastTime)/1000,0.05);
+  lastTime=now;
 
-  if (!player.dead) {
+  if(!player.dead && !custEl.classList.contains('open')){
     updatePlayer(dt);
-    animals.forEach(a => a.update(dt, player.pos));
+    animals.forEach(a=>a.update(dt,player.pos));
     updateMate(dt);
     updatePups(dt);
     updateHearts(dt);
     tickGestation(dt);
     updateSky(dt);
-
-    // Day count
-    dayTick += dt;
-    if (dayTick > DAY_LENGTH) { dayTick=0; player.day++; }
-
-    // Notif timer
-    if (notifTimer > 0) {
-      notifTimer -= dt;
-      if (notifTimer <= 0) notifEl.classList.remove('show');
+    dayTick+=dt;
+    if(dayTick>DAY_LENGTH){ dayTick=0; player.day++; }
+    if(notifTimer>0){ notifTimer-=dt; if(notifTimer<=0) notifEl.classList.remove('show'); }
+    // Animate water
+    const t=now*0.001;
+    const wpos=waterGeo.attributes.position;
+    for(let i=0;i<wpos.count;i++){
+      const x=wpos.getX(i), z=wpos.getZ(i);
+      wpos.setY(i, waterBaseY[i]+Math.sin(x*0.08+t)*0.12+Math.cos(z*0.1+t*0.7)*0.08);
     }
-
-    // Vignette for low health (pulsing)
-    if (player.health < 30) {
-      const pulse = Math.sin(Date.now()*0.004)*0.5+0.5;
-      vigEl.style.background = `radial-gradient(ellipse at center, transparent 40%, rgba(120,0,0,${0.3+pulse*0.3}) 100%)`;
-    } else {
-      vigEl.style.background = '';
-    }
+    wpos.needsUpdate=true; waterGeo.computeVertexNormals();
+    // Drift clouds
+    clouds.forEach(c=>{
+      c.userData.ang+=c.userData.speed*dt*0.002;
+      c.position.x=Math.cos(c.userData.ang)*c.userData.rad;
+      c.position.z=Math.sin(c.userData.ang)*c.userData.rad;
+      c.lookAt(new THREE.Vector3(c.position.x,c.position.y-50,c.position.z));
+    });
   }
 
   renderer.render(scene, camera);
 }
 
-requestAnimationFrame(t => { lastTime=t; loop(t); });
-
-// Show first-time notif after a moment
-setTimeout(() => showNotif('Click to lock mouse. W/A/S/D to move. Hunt. Survive.'), 2200);
+requestAnimationFrame(t=>{ lastTime=t; loop(t); });
+setTimeout(()=>showNotif('Click to lock mouse · Hunt · Survive · Find your mate'),2000);
