@@ -1,258 +1,160 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
   <title>Wolf — Survive the Wild</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #000; overflow: hidden; font-family: 'Georgia', serif; }
-    #canvas { display: block; }
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{background:#000;overflow:hidden;font-family:'Georgia',serif;-webkit-tap-highlight-color:transparent}
+    #canvas{display:block;position:fixed;inset:0}
 
-    #hud {
-      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      pointer-events: none; z-index: 10;
-    }
+    /* ── HUD ── */
+    #hud{position:fixed;inset:0;pointer-events:none;z-index:10}
+    #crosshair{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.6);box-shadow:0 0 4px #000}
+    #vitals{position:absolute;bottom:28px;left:32px;display:flex;flex-direction:column;gap:8px}
+    .bar-wrap{display:flex;align-items:center;gap:10px}
+    .bar-label{color:rgba(255,255,255,.7);font-size:11px;letter-spacing:1.5px;text-transform:uppercase;width:52px;text-align:right}
+    .bar-bg{width:130px;height:7px;background:rgba(0,0,0,.5);border-radius:4px;border:1px solid rgba(255,255,255,.12)}
+    .bar-fill{height:100%;border-radius:4px;transition:width .3s}
+    #health-fill{background:linear-gradient(90deg,#c0392b,#e74c3c)}
+    #hunger-fill{background:linear-gradient(90deg,#d35400,#e67e22)}
+    #stamina-fill{background:linear-gradient(90deg,#1a6fa8,#3498db)}
+    #thirst-fill{background:linear-gradient(90deg,#1e7a5e,#27ae60)}
+    #info-top{position:absolute;top:20px;right:24px;color:rgba(255,255,255,.8);font-size:13px;text-align:right;line-height:1.9;text-shadow:1px 1px 3px #000}
+    #info-top span{display:block}
+    #day-wrap{position:absolute;top:20px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.7);font-size:12px;letter-spacing:2px;text-transform:uppercase;text-shadow:1px 1px 4px #000}
+    #notif{position:absolute;top:60px;left:50%;transform:translateX(-50%);color:rgba(255,230,140,.95);font-size:14px;text-shadow:1px 1px 4px #000;letter-spacing:1px;text-align:center;opacity:0;transition:opacity .4s;white-space:nowrap}
+    #notif.show{opacity:1}
+    #controls{position:absolute;bottom:28px;right:24px;color:rgba(255,255,255,.4);font-size:11px;line-height:1.9;text-align:right;text-shadow:1px 1px 2px #000}
+    #controls span{display:block}
+    #howl-ring{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:80px;height:80px;border-radius:50%;border:3px solid rgba(255,255,255,.8);opacity:0}
+    #howl-ring.active{animation:ripple .7s ease-out forwards}
+    @keyframes ripple{from{transform:translate(-50%,-50%) scale(.6);opacity:1}to{transform:translate(-50%,-50%) scale(3);opacity:0}}
+    #vignette{position:absolute;inset:0;pointer-events:none;transition:background .4s}
+    #vignette.hurt{background:radial-gradient(ellipse at center,transparent 40%,rgba(120,0,0,.55) 100%)}
 
-    /* Crosshair */
-    #crosshair {
-      position: absolute; top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-      width: 6px; height: 6px;
-      border-radius: 50%;
-      background: rgba(255,255,255,0.7);
-      box-shadow: 0 0 4px rgba(0,0,0,0.8);
-    }
+    /* ── Splash ── */
+    #splash{position:fixed;inset:0;background:radial-gradient(ellipse at center,#0d1a0d 0%,#000 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:100;transition:opacity 1s}
+    #splash.hidden{opacity:0;pointer-events:none}
+    #splash h1{font-size:clamp(48px,8vw,96px);color:#e0d4b0;letter-spacing:6px;text-transform:uppercase;text-shadow:0 0 40px rgba(255,200,80,.4);margin-bottom:8px}
+    #splash p{color:rgba(255,255,255,.45);font-size:14px;letter-spacing:3px;margin-bottom:40px}
+    .splash-btns{display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
+    .splash-btn{padding:13px 36px;font-size:14px;letter-spacing:3px;background:transparent;border:2px solid rgba(255,255,255,.4);color:#fff;cursor:pointer;text-transform:uppercase;transition:all .3s;font-family:inherit}
+    .splash-btn:hover,.splash-btn:active{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.85)}
+    .splash-btn.primary{border-color:rgba(255,220,100,.6);color:rgba(255,220,100,.9)}
+    .splash-btn.primary:hover{background:rgba(255,220,100,.1)}
 
-    /* Vitals */
-    #vitals {
-      position: absolute; bottom: 28px; left: 32px;
-      display: flex; flex-direction: column; gap: 8px;
-    }
-    .bar-wrap { display: flex; align-items: center; gap: 10px; }
-    .bar-label {
-      color: rgba(255,255,255,0.75); font-size: 11px;
-      letter-spacing: 1.5px; text-transform: uppercase;
-      width: 52px; text-align: right;
-    }
-    .bar-bg {
-      width: 130px; height: 7px; background: rgba(0,0,0,0.5);
-      border-radius: 4px; border: 1px solid rgba(255,255,255,0.15);
-    }
-    .bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
-    #health-fill  { background: linear-gradient(90deg,#c0392b,#e74c3c); }
-    #hunger-fill  { background: linear-gradient(90deg,#d35400,#e67e22); }
-    #stamina-fill { background: linear-gradient(90deg,#1a6fa8,#3498db); }
-    #thirst-fill  { background: linear-gradient(90deg,#1e7a5e,#27ae60); }
+    /* ── Wolf Customizer ── */
+    #customizer{position:fixed;inset:0;background:#060d06;z-index:200;display:none;flex-direction:column}
+    #customizer.open{display:flex}
+    #cust-header{padding:20px 24px 0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+    #cust-header h2{color:#e0d4b0;font-size:20px;letter-spacing:3px;text-transform:uppercase}
+    #cust-close{background:none;border:1px solid rgba(255,255,255,.3);color:#fff;padding:6px 18px;font-family:inherit;font-size:12px;letter-spacing:2px;cursor:pointer;text-transform:uppercase}
+    #cust-canvas-wrap{flex:1;min-height:0;position:relative}
+    #cust-canvas{display:block;width:100%;height:100%}
+    #wolf-name-badge{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);color:rgba(255,220,120,.8);font-size:13px;letter-spacing:2px;text-shadow:0 0 8px rgba(255,150,0,.4)}
+    #cust-panel{flex-shrink:0;background:rgba(0,0,0,.7);border-top:1px solid rgba(255,255,255,.08);padding:16px 20px 24px;overflow-y:auto;max-height:52vh}
+    .cust-section{margin-bottom:16px}
+    .cust-section h3{color:rgba(255,255,255,.5);font-size:10px;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px}
+    /* Coat swatches */
+    #coat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+    .coat-swatch{height:52px;border-radius:6px;border:2px solid transparent;cursor:pointer;position:relative;overflow:hidden;transition:transform .15s,border-color .15s}
+    .coat-swatch.active{border-color:rgba(255,220,100,.9);transform:scale(1.06)}
+    .coat-swatch span{position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:9px;color:rgba(255,255,255,.8);letter-spacing:.5px;text-shadow:0 1px 3px #000}
+    /* Eye swatches */
+    #eye-grid{display:flex;gap:10px;flex-wrap:wrap}
+    .eye-dot{width:36px;height:36px;border-radius:50%;border:2px solid transparent;cursor:pointer;transition:transform .15s,border-color .15s}
+    .eye-dot.active{border-color:#fff;transform:scale(1.15)}
+    /* Size */
+    #size-btns{display:flex;gap:10px}
+    .size-btn{flex:1;padding:9px;border:1px solid rgba(255,255,255,.25);background:transparent;color:rgba(255,255,255,.7);font-family:inherit;font-size:11px;letter-spacing:1px;text-transform:uppercase;cursor:pointer;transition:all .2s}
+    .size-btn.active{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.7);color:#fff}
+    /* Name input */
+    #wolf-name-input{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);color:#fff;padding:10px 14px;font-family:inherit;font-size:14px;letter-spacing:2px;outline:none}
+    #wolf-name-input::placeholder{color:rgba(255,255,255,.3)}
+    #cust-confirm{width:100%;padding:14px;margin-top:16px;background:rgba(255,220,100,.12);border:1px solid rgba(255,220,100,.5);color:rgba(255,220,100,.9);font-family:inherit;font-size:13px;letter-spacing:3px;text-transform:uppercase;cursor:pointer;transition:all .2s}
+    #cust-confirm:active{background:rgba(255,220,100,.22)}
 
-    /* Pack / score */
-    #info-top {
-      position: absolute; top: 20px; right: 24px;
-      color: rgba(255,255,255,0.8); font-size: 13px;
-      text-align: right; line-height: 1.8;
-      text-shadow: 1px 1px 3px #000;
-    }
-    #info-top span { display: block; }
-
-    /* Day indicator */
-    #day-wrap {
-      position: absolute; top: 20px; left: 50%;
-      transform: translateX(-50%);
-      color: rgba(255,255,255,0.7); font-size: 12px;
-      letter-spacing: 2px; text-transform: uppercase;
-      text-shadow: 1px 1px 4px #000;
-    }
-
-    /* Notifications */
-    #notif {
-      position: absolute; top: 60px; left: 50%;
-      transform: translateX(-50%);
-      color: rgba(255,230,140,0.95); font-size: 14px;
-      text-shadow: 1px 1px 4px #000; letter-spacing: 1px;
-      text-align: center; pointer-events: none;
-      opacity: 0; transition: opacity 0.4s;
-    }
-    #notif.show { opacity: 1; }
-
-    /* Controls overlay */
-    #controls {
-      position: absolute; bottom: 28px; right: 24px;
-      color: rgba(255,255,255,0.45); font-size: 11px;
-      line-height: 1.9; text-align: right;
-      text-shadow: 1px 1px 2px #000;
-    }
-    #controls span { display: block; }
+    /* ── Death ── */
+    #death{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;flex-direction:column;align-items:center;justify-content:center;z-index:99}
+    #death.show{display:flex}
+    #death h2{color:#c0392b;font-size:52px;letter-spacing:4px;margin-bottom:12px}
+    #death p{color:rgba(255,255,255,.5);letter-spacing:2px;margin-bottom:36px}
+    #death button{padding:12px 40px;font-size:14px;letter-spacing:3px;background:transparent;border:2px solid #c0392b;color:#c0392b;cursor:pointer;text-transform:uppercase;transition:all .3s;font-family:inherit}
+    #death button:hover{background:rgba(192,57,43,.2)}
 
     /* ── Mobile touch controls ── */
-    #touch-controls {
-      display: none;
-      position: absolute; inset: 0;
-      pointer-events: none;
-    }
-
-    /* Joystick */
-    #joystick-zone {
-      position: absolute; left: 24px; bottom: 40px;
-      width: 130px; height: 130px;
-      pointer-events: all;
-    }
-    #joystick-base {
-      position: absolute; inset: 0;
-      border-radius: 50%;
-      background: rgba(255,255,255,0.08);
-      border: 2px solid rgba(255,255,255,0.2);
-    }
-    #joystick-knob {
-      position: absolute;
-      width: 52px; height: 52px;
-      border-radius: 50%;
-      background: rgba(255,255,255,0.28);
-      border: 2px solid rgba(255,255,255,0.5);
-      top: 50%; left: 50%;
-      transform: translate(-50%,-50%);
-      transition: none;
-    }
-
-    /* Right-side look zone */
-    #look-zone {
-      position: absolute; right: 0; top: 0;
-      width: 55%; height: 100%;
-      pointer-events: all;
-    }
-
-    /* Action buttons */
-    .touch-btn {
-      position: absolute;
-      border-radius: 50%;
-      background: rgba(255,255,255,0.12);
-      border: 2px solid rgba(255,255,255,0.3);
-      color: rgba(255,255,255,0.85);
-      font-size: 11px; font-family: 'Georgia', serif;
-      letter-spacing: 0.5px; text-align: center;
-      display: flex; align-items: center; justify-content: center;
-      pointer-events: all;
-      user-select: none; -webkit-user-select: none;
-      cursor: pointer;
-      transition: background 0.1s;
-    }
-    .touch-btn:active, .touch-btn.pressed {
-      background: rgba(255,255,255,0.28);
-      border-color: rgba(255,255,255,0.7);
-    }
-
-    #btn-attack {
-      width: 72px; height: 72px;
-      right: 28px; bottom: 52px;
-      font-size: 13px;
-    }
-    #btn-howl {
-      width: 56px; height: 56px;
-      right: 112px; bottom: 76px;
-    }
-    #btn-bond {
-      width: 56px; height: 56px;
-      right: 112px; bottom: 20px;
-      color: rgba(255,180,200,0.9);
-      border-color: rgba(255,150,180,0.4);
-    }
-    #btn-sprint {
-      width: 56px; height: 56px;
-      right: 28px; bottom: 136px;
-    }
-
-    /* Howl indicator */
-    #howl-ring {
-      position: absolute; top: 50%; left: 50%;
-      transform: translate(-50%,-50%);
-      width: 80px; height: 80px;
-      border-radius: 50%;
-      border: 3px solid rgba(255,255,255,0.8);
-      opacity: 0; transition: opacity 0.3s;
-      animation: none;
-    }
-    #howl-ring.active {
-      opacity: 1;
-      animation: ripple 0.7s ease-out forwards;
-    }
-    @keyframes ripple {
-      from { transform: translate(-50%,-50%) scale(0.6); opacity:1; }
-      to   { transform: translate(-50%,-50%) scale(3);   opacity:0; }
-    }
-
-    /* Blood vignette */
-    #vignette {
-      position: absolute; inset: 0;
-      background: radial-gradient(ellipse at center, transparent 60%, rgba(120,0,0,0) 100%);
-      pointer-events: none; transition: background 0.4s;
-    }
-    #vignette.hurt {
-      background: radial-gradient(ellipse at center, transparent 40%, rgba(120,0,0,0.55) 100%);
-    }
-
-    /* Splash screen */
-    #splash {
-      position: fixed; inset: 0;
-      background: radial-gradient(ellipse at center, #0d1a0d 0%, #000 100%);
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      z-index: 100; transition: opacity 1s;
-    }
-    #splash h1 {
-      font-size: clamp(48px, 8vw, 96px);
-      color: #e0d4b0; letter-spacing: 6px;
-      text-transform: uppercase;
-      text-shadow: 0 0 40px rgba(255,200,80,0.4);
-      margin-bottom: 16px;
-    }
-    #splash p {
-      color: rgba(255,255,255,0.5); font-size: 14px;
-      letter-spacing: 3px; margin-bottom: 48px;
-    }
-    #splash button {
-      padding: 14px 48px; font-size: 16px; letter-spacing: 3px;
-      background: transparent; border: 2px solid rgba(255,255,255,0.5);
-      color: #fff; cursor: pointer; text-transform: uppercase;
-      transition: all 0.3s; font-family: inherit;
-    }
-    #splash button:hover {
-      background: rgba(255,255,255,0.1);
-      border-color: rgba(255,255,255,0.9);
-    }
-    #splash.hidden { opacity: 0; pointer-events: none; }
-
-    /* Death screen */
-    #death {
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,0.85);
-      display: none; flex-direction: column;
-      align-items: center; justify-content: center;
-      z-index: 99;
-    }
-    #death.show { display: flex; }
-    #death h2 { color: #c0392b; font-size: 52px; letter-spacing: 4px; margin-bottom: 12px; }
-    #death p  { color: rgba(255,255,255,0.5); letter-spacing: 2px; margin-bottom: 36px; }
-    #death button {
-      padding: 12px 40px; font-size: 14px; letter-spacing: 3px;
-      background: transparent; border: 2px solid #c0392b;
-      color: #c0392b; cursor: pointer; text-transform: uppercase;
-      transition: all 0.3s; font-family: inherit;
-    }
-    #death button:hover { background: rgba(192,57,43,0.2); }
+    #touch-controls{display:none;position:absolute;inset:0;pointer-events:none}
+    #joystick-zone{position:absolute;left:24px;bottom:40px;width:130px;height:130px;pointer-events:all}
+    #joystick-base{position:absolute;inset:0;border-radius:50%;background:rgba(255,255,255,.07);border:2px solid rgba(255,255,255,.18)}
+    #joystick-knob{position:absolute;width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.25);border:2px solid rgba(255,255,255,.45);top:50%;left:50%;transform:translate(-50%,-50%)}
+    #look-zone{position:absolute;right:0;top:0;width:55%;height:100%;pointer-events:all}
+    .touch-btn{position:absolute;border-radius:50%;background:rgba(255,255,255,.1);border:2px solid rgba(255,255,255,.28);color:rgba(255,255,255,.8);font-size:11px;font-family:'Georgia',serif;letter-spacing:.5px;text-align:center;display:flex;align-items:center;justify-content:center;pointer-events:all;user-select:none;-webkit-user-select:none;cursor:pointer;transition:background .1s}
+    .touch-btn:active,.touch-btn.pressed{background:rgba(255,255,255,.26);border-color:rgba(255,255,255,.7)}
+    #btn-attack{width:72px;height:72px;right:28px;bottom:52px;font-size:13px}
+    #btn-howl{width:56px;height:56px;right:112px;bottom:76px}
+    #btn-bond{width:56px;height:56px;right:112px;bottom:20px;color:rgba(255,180,200,.9);border-color:rgba(255,150,180,.4)}
+    #btn-sprint{width:56px;height:56px;right:28px;bottom:136px}
   </style>
 </head>
 <body>
+
+<!-- Wolf Customizer -->
+<div id="customizer">
+  <div id="cust-header">
+    <h2>Your Wolf</h2>
+    <button id="cust-close">Back</button>
+  </div>
+  <div id="cust-canvas-wrap">
+    <canvas id="cust-canvas"></canvas>
+    <div id="wolf-name-badge">Wolf</div>
+  </div>
+  <div id="cust-panel">
+
+    <div class="cust-section">
+      <h3>Coat</h3>
+      <div id="coat-grid"></div>
+    </div>
+
+    <div class="cust-section">
+      <h3>Eyes</h3>
+      <div id="eye-grid"></div>
+    </div>
+
+    <div class="cust-section">
+      <h3>Build</h3>
+      <div id="size-btns">
+        <button class="size-btn" data-size="0.85">Lean</button>
+        <button class="size-btn active" data-size="1.0">Normal</button>
+        <button class="size-btn" data-size="1.2">Heavy</button>
+        <button class="size-btn" data-size="1.4">Giant</button>
+      </div>
+    </div>
+
+    <div class="cust-section">
+      <h3>Name</h3>
+      <input id="wolf-name-input" type="text" maxlength="18" placeholder="Name your wolf…" autocomplete="off" autocorrect="off" spellcheck="false"/>
+    </div>
+
+    <button id="cust-confirm">Done — Enter the Wild</button>
+  </div>
+</div>
 
 <!-- Splash -->
 <div id="splash">
   <h1>WOLF</h1>
   <p>Survive · Hunt · Howl</p>
-  <button id="start-btn">Enter the Wild</button>
+  <div class="splash-btns">
+    <button class="splash-btn" id="customize-btn">Customize Wolf</button>
+    <button class="splash-btn primary" id="start-btn">Enter the Wild</button>
+  </div>
 </div>
 
 <!-- Death -->
 <div id="death">
   <h2>YOU DIED</h2>
-  <p id="death-reason">Starvation claimed your spirit</p>
+  <p id="death-reason">The wilderness claimed you.</p>
   <button id="respawn-btn">Rise Again</button>
 </div>
 
@@ -265,37 +167,19 @@
   <div id="vignette"></div>
   <div id="howl-ring"></div>
   <div id="notif"></div>
-
-  <div id="day-wrap">
-    <span id="day-label">Dawn · Day 1</span>
-  </div>
-
+  <div id="day-wrap"><span id="day-label">Dawn · Day 1</span></div>
   <div id="info-top">
     <span id="kills-label">Kills: 0</span>
     <span id="pack-label">Pack: Lone Wolf</span>
-    <span id="pup-label" style="display:none;color:rgba(255,180,200,0.85)"></span>
+    <span id="pup-label" style="display:none;color:rgba(255,180,200,.85)"></span>
   </div>
-
   <div id="vitals">
-    <div class="bar-wrap">
-      <span class="bar-label">Health</span>
-      <div class="bar-bg"><div class="bar-fill" id="health-fill"  style="width:100%"></div></div>
-    </div>
-    <div class="bar-wrap">
-      <span class="bar-label">Hunger</span>
-      <div class="bar-bg"><div class="bar-fill" id="hunger-fill"  style="width:100%"></div></div>
-    </div>
-    <div class="bar-wrap">
-      <span class="bar-label">Thirst</span>
-      <div class="bar-bg"><div class="bar-fill" id="thirst-fill"  style="width:100%"></div></div>
-    </div>
-    <div class="bar-wrap">
-      <span class="bar-label">Stamina</span>
-      <div class="bar-bg"><div class="bar-fill" id="stamina-fill" style="width:100%"></div></div>
-    </div>
+    <div class="bar-wrap"><span class="bar-label">Health</span><div class="bar-bg"><div class="bar-fill" id="health-fill" style="width:100%"></div></div></div>
+    <div class="bar-wrap"><span class="bar-label">Hunger</span><div class="bar-bg"><div class="bar-fill" id="hunger-fill" style="width:100%"></div></div></div>
+    <div class="bar-wrap"><span class="bar-label">Thirst</span><div class="bar-bg"><div class="bar-fill" id="thirst-fill" style="width:100%"></div></div></div>
+    <div class="bar-wrap"><span class="bar-label">Stamina</span><div class="bar-bg"><div class="bar-fill" id="stamina-fill" style="width:100%"></div></div></div>
   </div>
-
-  <div id="controls" id="kb-controls">
+  <div id="controls">
     <span>W A S D — Move</span>
     <span>SHIFT — Sprint</span>
     <span>SPACE — Howl</span>
@@ -303,17 +187,10 @@
     <span>F — Bond / Mate</span>
     <span>Mouse — Look</span>
   </div>
-
-  <!-- Mobile touch controls -->
+  <!-- Mobile -->
   <div id="touch-controls">
-    <!-- Left: joystick -->
-    <div id="joystick-zone">
-      <div id="joystick-base"></div>
-      <div id="joystick-knob"></div>
-    </div>
-    <!-- Right: look zone (transparent, just for touch tracking) -->
+    <div id="joystick-zone"><div id="joystick-base"></div><div id="joystick-knob"></div></div>
     <div id="look-zone"></div>
-    <!-- Action buttons -->
     <div class="touch-btn" id="btn-attack">BITE</div>
     <div class="touch-btn" id="btn-howl">HOWL</div>
     <div class="touch-btn" id="btn-bond">BOND ♥</div>
