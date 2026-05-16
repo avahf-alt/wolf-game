@@ -313,6 +313,118 @@ for(let i=0;i<40;i++){
   scene.add(log);
 }
 
+// ─── Spawn Pond (river pool next to start) ────────────────────────────────────
+(function buildSpawnPond(){
+  const cx=18, cz=14; // just NE of spawn
+  const pondY = 0.55;  // water surface height
+
+  // Flatten surrounding terrain slightly — sink land verts near pond into water zone
+  for(let i=0;i<posAttr.count;i++){
+    const px=posAttr.getX(i), pz=posAttr.getZ(i);
+    const d=Math.sqrt((px-cx)*(px-cx)+(pz-cz)*(pz-cz));
+    if(d<9){
+      const blend=Math.max(0,1-(d/9));
+      const cur=posAttr.getY(i);
+      posAttr.setY(i, cur*(1-blend*0.92) + (pondY-0.3)*blend*0.92);
+    }
+  }
+  posAttr.needsUpdate=true;
+  tGeo.computeVertexNormals();
+
+  // Pond water surface
+  const pondGeo=new THREE.CircleGeometry(8.5,32);
+  pondGeo.rotateX(-Math.PI/2);
+  const pondMat=new THREE.MeshStandardMaterial({
+    color:0x1a5888,transparent:true,opacity:0.84,roughness:0.04,metalness:0.35,
+  });
+  const pondMesh=new THREE.Mesh(pondGeo,pondMat);
+  pondMesh.position.set(cx,pondY,cz);
+  pondMesh.receiveShadow=true;
+  scene.add(pondMesh);
+
+  // Shallow shore gradient ring (darker)
+  const shoreGeo=new THREE.RingGeometry(7,10,32);
+  shoreGeo.rotateX(-Math.PI/2);
+  const shoreMat=new THREE.MeshStandardMaterial({color:0x0e3a55,transparent:true,opacity:0.55,roughness:0.1});
+  const shoreMesh=new THREE.Mesh(shoreGeo,shoreMat);
+  shoreMesh.position.set(cx,pondY+0.01,cz);
+  scene.add(shoreMesh);
+
+  // Rocks around edge
+  const pondRockMat=new THREE.MeshStandardMaterial({color:0x4a4840,roughness:0.88,metalness:0.06});
+  const pondRockMat2=new THREE.MeshStandardMaterial({color:0x6a6560,roughness:0.84,metalness:0.05});
+  for(let i=0;i<14;i++){
+    const a=i/14*Math.PI*2+(Math.random()-0.5)*0.4;
+    const r=8.2+Math.random()*1.6;
+    const s=0.3+Math.random()*0.85;
+    const rk=new THREE.Mesh(new THREE.DodecahedronGeometry(s,0), Math.random()>0.5?pondRockMat:pondRockMat2);
+    rk.position.set(cx+Math.cos(a)*r, pondY-s*0.4, cz+Math.sin(a)*r);
+    rk.rotation.set(Math.random()*Math.PI,Math.random()*Math.PI,Math.random()*Math.PI);
+    rk.castShadow=rk.receiveShadow=true;
+    scene.add(rk);
+  }
+  // Some rocks inside the pond (exposed)
+  for(let i=0;i<5;i++){
+    const a=Math.random()*Math.PI*2, r=2+Math.random()*4;
+    const s=0.18+Math.random()*0.28;
+    const rk=new THREE.Mesh(new THREE.DodecahedronGeometry(s,0),pondRockMat);
+    rk.position.set(cx+Math.cos(a)*r,pondY+s*0.3,cz+Math.sin(a)*r);
+    rk.rotation.set(Math.random()*Math.PI,Math.random()*Math.PI,Math.random()*Math.PI);
+    scene.add(rk);
+  }
+
+  // Lily pads
+  const lilyMat=new THREE.MeshStandardMaterial({color:0x2a5e18,roughness:0.9,metalness:0});
+  const lilyFlowerMat=new THREE.MeshStandardMaterial({color:0xf8e8f0,roughness:0.7,emissive:new THREE.Color(0x180808)});
+  for(let i=0;i<9;i++){
+    const a=Math.random()*Math.PI*2, r=1.5+Math.random()*5;
+    const pad=new THREE.Mesh(new THREE.CircleGeometry(0.35+Math.random()*0.25,10),lilyMat);
+    pad.rotation.x=-Math.PI/2;
+    pad.position.set(cx+Math.cos(a)*r, pondY+0.03, cz+Math.sin(a)*r);
+    scene.add(pad);
+    // Tiny flower on some pads
+    if(Math.random()>0.5){
+      const fl=new THREE.Mesh(new THREE.SphereGeometry(0.07,6,5),lilyFlowerMat);
+      fl.position.set(cx+Math.cos(a)*r,pondY+0.1,cz+Math.sin(a)*r);
+      scene.add(fl);
+    }
+  }
+
+  // Reed / cattail stalks
+  const reedMat=new THREE.MeshStandardMaterial({color:0x5a7a2a,roughness:0.95});
+  const cattailMat=new THREE.MeshStandardMaterial({color:0x5a3010,roughness:0.92});
+  for(let i=0;i<18;i++){
+    const a=Math.random()*Math.PI*2, r=7.5+Math.random()*3;
+    const h=0.9+Math.random()*1.2;
+    const stalk=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.04,h,5),reedMat);
+    stalk.position.set(cx+Math.cos(a)*r, pondY+h/2, cz+Math.sin(a)*r);
+    scene.add(stalk);
+    if(Math.random()>0.4){
+      const head=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,0.28,7),cattailMat);
+      head.position.set(cx+Math.cos(a)*r, pondY+h+0.1, cz+Math.sin(a)*r);
+      scene.add(head);
+    }
+  }
+
+  // River stream flowing south from pond (visual only)
+  const streamMat=new THREE.MeshStandardMaterial({color:0x1a5070,transparent:true,opacity:0.7,roughness:0.06});
+  for(let seg=0;seg<5;seg++){
+    const sz=8+seg*3;
+    const sg=new THREE.PlaneGeometry(3.5,sz);
+    sg.rotateX(-Math.PI/2);
+    const sm=new THREE.Mesh(sg,streamMat);
+    sm.position.set(cx+2+seg*0.5, pondY, cz-7-seg*sz*0.5+sz*0.5);
+    scene.add(sm);
+    // rocks along stream
+    for(let r=0;r<3;r++){
+      const rk=new THREE.Mesh(new THREE.DodecahedronGeometry(0.2+Math.random()*0.3,0),pondRockMat);
+      rk.position.set(cx+1+Math.random()*5, pondY+0.05, cz-7-seg*8+Math.random()*8);
+      rk.rotation.set(Math.random(),Math.random(),Math.random());
+      scene.add(rk);
+    }
+  }
+})();
+
 // ─── Berry Bushes ─────────────────────────────────────────────────────────────
 const berryBushes = [];
 const bushMat  = new THREE.MeshStandardMaterial({ color:0x1e3e10, roughness:0.9 });
@@ -815,7 +927,11 @@ class Animal{
     this.speed=speed;this.type=type;this.state='idle';
     this.target=new THREE.Vector3();this.timer=Math.random()*5;
     this.dead=false;this.legPhase=0;
-    const x=(Math.random()-0.5)*WORLD_SIZE*0.8,z=(Math.random()-0.5)*WORLD_SIZE*0.8;
+    this.stamina=100; this.exhausted=false; this.exhaustTimer=0;
+    // Spawn away from player start
+    let x,z;
+    do { x=(Math.random()-0.5)*WORLD_SIZE*0.8; z=(Math.random()-0.5)*WORLD_SIZE*0.8; }
+    while(Math.sqrt(x*x+z*z)<30); // keep away from spawn pond
     mesh.position.set(x,terrainY(x,z)+0.05,z);
     scene.add(mesh);
   }
@@ -823,43 +939,73 @@ class Animal{
     if(this.dead) return;
     this.timer-=dt;
     const dist=this.mesh.position.distanceTo(wolfPos);
-    const fleeR=(this.type==='deer'?22:14)*(player.crouching?0.35:1.0);
-    if(dist<fleeR){this.state='flee';this.timer=4;}
-    if(this.state==='flee'&&this.timer<0) this.state='wander';
-    if(this.state==='idle'&&this.timer<0){
-      this.state=Math.random()>0.3?'wander':'idle';
-      this.timer=2+Math.random()*5;
-      if(this.state==='wander'){
-        const a=Math.random()*Math.PI*2,r=8+Math.random()*25;
-        this.target.set(Math.max(-WORLD_SIZE/2+5,Math.min(WORLD_SIZE/2-5,this.mesh.position.x+Math.cos(a)*r)),0,Math.max(-WORLD_SIZE/2+5,Math.min(WORLD_SIZE/2-5,this.mesh.position.z+Math.sin(a)*r)));
+
+    // Exhaustion recovery
+    if(this.exhausted){
+      this.exhaustTimer-=dt;
+      if(this.exhaustTimer<=0){ this.exhausted=false; this.stamina=100; this.state='idle'; this.timer=4; }
+    }
+
+    if(!this.exhausted){
+      const fleeR=(this.type==='deer'?22:14)*(player.crouching?0.35:1.0);
+      if(dist<fleeR && this.state!=='flee'){ this.state='flee'; this.timer=6; }
+      if(this.state==='flee' && this.timer<0) this.state='wander';
+      if(this.state==='idle' && this.timer<0){
+        this.state=Math.random()>0.3?'wander':'idle';
+        this.timer=2+Math.random()*5;
+        if(this.state==='wander'){
+          const a=Math.random()*Math.PI*2,r=8+Math.random()*25;
+          this.target.set(
+            Math.max(-WORLD_SIZE/2+5,Math.min(WORLD_SIZE/2-5,this.mesh.position.x+Math.cos(a)*r)),0,
+            Math.max(-WORLD_SIZE/2+5,Math.min(WORLD_SIZE/2-5,this.mesh.position.z+Math.sin(a)*r))
+          );
+        }
       }
     }
-    let spd=this.speed,dx=0,dz=0;
+
+    let spd=this.speed, dx=0, dz=0;
     if(this.state==='flee'){
-      spd*=2.2;dx=this.mesh.position.x-wolfPos.x;dz=this.mesh.position.z-wolfPos.z;
-      const l=Math.sqrt(dx*dx+dz*dz)+0.001;dx/=l;dz/=l;
-    } else if(this.state==='wander'){
-      dx=this.target.x-this.mesh.position.x;dz=this.target.z-this.mesh.position.z;
-      const l=Math.sqrt(dx*dx+dz*dz);
-      if(l<1){this.state='idle';this.timer=2+Math.random()*4;return;}
-      dx/=l;dz/=l;
+      // Drain stamina while fleeing
+      this.stamina=Math.max(0,this.stamina-dt*14);
+      const tireFactor=this.stamina<30 ? 0.35+0.65*(this.stamina/30) : 1.0;
+      spd*=2.2*tireFactor;
+      if(this.stamina<=0){
+        // Collapse — exhausted, catchable
+        this.exhausted=true; this.exhaustTimer=this.type==='deer'?9:5;
+        this.state='idle'; return;
+      }
+      dx=this.mesh.position.x-wolfPos.x; dz=this.mesh.position.z-wolfPos.z;
+      const l=Math.sqrt(dx*dx+dz*dz)+0.001; dx/=l; dz/=l;
+    } else {
+      this.stamina=Math.min(100,this.stamina+dt*8);
+      if(this.state==='wander'){
+        dx=this.target.x-this.mesh.position.x; dz=this.target.z-this.mesh.position.z;
+        const l=Math.sqrt(dx*dx+dz*dz);
+        if(l<1){ this.state='idle'; this.timer=2+Math.random()*4; return; }
+        dx/=l; dz/=l;
+      }
     }
     if(dx!==0||dz!==0){
-      this.mesh.position.x+=dx*spd*dt;this.mesh.position.z+=dz*spd*dt;
+      this.mesh.position.x+=dx*spd*dt; this.mesh.position.z+=dz*spd*dt;
       this.mesh.position.y=Math.max(terrainY(this.mesh.position.x,this.mesh.position.z)+0.05,0.35);
       this.mesh.rotation.y=Math.atan2(dx,dz);
       this.legPhase+=spd*dt*5;
       ['leg0','leg2'].forEach(n=>{const l=this.mesh.getObjectByName(n);if(l)l.rotation.x=Math.sin(this.legPhase)*0.5;});
       ['leg1','leg3'].forEach(n=>{const l=this.mesh.getObjectByName(n);if(l)l.rotation.x=-Math.sin(this.legPhase)*0.5;});
+    } else if(this.exhausted){
+      // Panting: subtle body bob
+      this.mesh.children[0] && (this.mesh.children[0].scale.y=0.8+Math.sin(Date.now()*0.012)*0.06);
     }
     this.mesh.position.x=Math.max(-WORLD_SIZE/2+5,Math.min(WORLD_SIZE/2-5,this.mesh.position.x));
     this.mesh.position.z=Math.max(-WORLD_SIZE/2+5,Math.min(WORLD_SIZE/2-5,this.mesh.position.z));
   }
   takeDamage(amt){
     if(this.dead) return;
-    this.health-=amt;this.state='flee';this.timer=8;
+    const bonus=this.exhausted?1.8:1.0; // exhausted animals take more damage
+    this.health-=amt*bonus; this.state='flee'; this.timer=8;
     if(this.health<=0){
-      this.dead=true;this.mesh.rotation.z=Math.PI/2;
+      this.dead=true; this.exhausted=false;
+      this.mesh.rotation.z=Math.PI/2;
       this.mesh.position.y=terrainY(this.mesh.position.x,this.mesh.position.z);
     }
   }
@@ -1155,7 +1301,13 @@ function updateSky(dt){
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
-function isInWater(pos){ return terrainY(pos.x,pos.z)<0.32; }
+function isInWater(pos){
+  // natural sea-level water
+  if(terrainY(pos.x,pos.z)<0.32) return true;
+  // spawn pond area
+  const dx=pos.x-18, dz=pos.z-14;
+  return Math.sqrt(dx*dx+dz*dz)<9.5;
+}
 
 // ─── Howl ─────────────────────────────────────────────────────────────────────
 function triggerHowl(){
@@ -1194,6 +1346,22 @@ function tryAttack(){
       }
     }
   });
+  // Exhausted animal — easy kill at normal range
+  if(!hit){
+    animals.forEach(a=>{
+      if(a.dead||!a.exhausted) return;
+      if(a.mesh.position.distanceTo(player.pos)<ATTACK_RANGE*1.5){
+        a.takeDamage(999); hit=true;
+        player.kills++; killsLabel.textContent='Kills: '+player.kills;
+        const meat=a.type==='deer'?50:20;
+        player.hunger=Math.min(100,player.hunger+meat);
+        if(den.placed&&player.hunger>=95&&den.foodCache<DEN_FOOD_MAX){ den.foodCache++; showNotif(`Stored in den (${den.foodCache}/${DEN_FOOD_MAX}).`); }
+        else showNotif(a.type==='deer'?'Deer brought down — pack eats tonight.':'Rabbit caught.');
+        if(player.kills===5)  updatePackLabel();
+        if(player.kills===15) { packLabel.textContent='Pack: Alpha Wolf'; showNotif('You are Alpha.'); }
+      }
+    });
+  }
   // Berry eating
   if(!hit){
     berryBushes.forEach(b=>{
@@ -1501,6 +1669,18 @@ function loop(now){
     berryBushes.forEach(b=>{ if(b.depleted){ b.regenTimer-=dt; if(b.regenTimer<=0){ b.depleted=false; b.mesh.children.forEach(c=>c.visible=true); } } });
     // Fish drift
     fishList.forEach(f=>{ if(f.caught) return; f.angle+=dt*0.4; f.mesh.position.x=f.cx+Math.cos(f.angle)*1.5; f.mesh.position.z=f.cz+Math.sin(f.angle)*1.5; f.mesh.rotation.y=f.angle+Math.PI/2; });
+    // Exhausted animal prompt
+    if(notifTimer<=0){
+      for(const a of animals){
+        if(a.dead) continue;
+        if(a.exhausted && a.mesh.position.distanceTo(player.pos)<8){
+          notifEl.textContent='⚡ Exhausted prey — press E to finish the hunt';
+          notifEl.classList.add('show'); break;
+        }
+        const nearFleeing = !a.dead && a.state==='flee' && a.mesh.position.distanceTo(player.pos)<18;
+        if(nearFleeing && a.stamina<40){ notifEl.textContent='Chase it! The prey is tiring…'; notifEl.classList.add('show'); break; }
+      }
+    }
     dayTick+=dt;
     if(dayTick>DAY_LENGTH){ dayTick=0; player.day++; }
     if(notifTimer>0){ notifTimer-=dt; if(notifTimer<=0) notifEl.classList.remove('show'); }
