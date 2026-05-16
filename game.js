@@ -34,6 +34,7 @@ const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)||navigato
 
 // ─── Wolf presets ─────────────────────────────────────────────────────────────
 const COAT_PRESETS = [
+  { name:'Mystic',  base:0x080608, saddle:0x120008, belly:0x141014, sock:0x0c080c, eye:0x88ddff, pattern:'mystic' },
   { name:'Timber',  base:0x7a7268, saddle:0x252218, belly:0xcecab8, sock:0xd8d4c4, eye:0xffee44 },
   { name:'Arctic',  base:0xf2f0ec, saddle:0xd8d6d0, belly:0xffffff, sock:0xffffff, eye:0x88ccff },
   { name:'Obsidian',base:0x18180e, saddle:0x080806, belly:0x2e2e28, sock:0x1e1e18, eye:0xff8800 },
@@ -53,8 +54,8 @@ const EYE_COLORS = [
 ];
 
 let wolfConfig = {
-  preset:   0,
-  eyeIdx:   0,
+  preset:   0,   // 0 = Mystic (default)
+  eyeIdx:   2,   // Ice blue eyes for Mystic
   scale:    1.0,
   name:     'Wolf',
 };
@@ -390,7 +391,9 @@ function makeWolf(cfg={}) {
   const saddleMat= mat(sadCol);
   const bellyMat = mat(bellyCol);
   const sockMat  = mat(sockCol);
-  const eyeMat   = new THREE.MeshStandardMaterial({ color:eyeCol, emissive:new THREE.Color(eyeCol).multiplyScalar(0.3), roughness:0.2, metalness:0.1 });
+  // Eyes glow more for Mystic preset
+  const eyeEmissiveMult = preset.pattern==='mystic' ? 1.2 : 0.5;
+  const eyeMat = new THREE.MeshStandardMaterial({ color:eyeCol, emissive:new THREE.Color(eyeCol).multiplyScalar(eyeEmissiveMult), roughness:0.1, metalness:0.15 });
   const noseMat  = mat(0x1a1a18);
   const tongueMat= mat(0xd04858);
   const darkMat  = mat(sadCol);
@@ -445,16 +448,31 @@ function makeWolf(cfg={}) {
   const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.12,0.02,0.04), mouthMat);
   mouth.position.set(0,1.085,1.22); g.add(mouth);
 
-  // Eyes — deep-set with reflective surface
+  // Eyes — large, glowing, unmistakable
+  const scleraMat = new THREE.MeshStandardMaterial({ color:0xf8f4e8, roughness:0.3, metalness:0.0 });
+  const pupilMat  = new THREE.MeshStandardMaterial({ color:0x020202, roughness:0.05, metalness:0.3 });
+  const catchMat  = new THREE.MeshBasicMaterial({ color:0xffffff });
   [-1,1].forEach(s=>{
-    const eyeSocket = new THREE.Mesh(new THREE.SphereGeometry(0.072,8,7), saddleMat);
-    eyeSocket.position.set(s*0.14,1.31,1.0); g.add(eyeSocket);
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.058,8,7), eyeMat);
-    eye.position.set(s*0.14,1.31,1.04); g.add(eye);
-    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.028,6,5), new THREE.MeshStandardMaterial({color:0x020202,roughness:0.1,metalness:0.2}));
-    pupil.position.set(s*0.14,1.31,1.09); g.add(pupil);
-    const catchlight = new THREE.Mesh(new THREE.SphereGeometry(0.01,4,4), new THREE.MeshBasicMaterial({color:0xffffff}));
-    catchlight.position.set(s*0.15,1.33,1.12); g.add(catchlight);
+    // Dark socket recess
+    const socket = new THREE.Mesh(new THREE.SphereGeometry(0.095,10,8), saddleMat);
+    socket.scale.set(1,1,0.6); socket.position.set(s*0.148,1.315,0.98); g.add(socket);
+    // White sclera (shows around iris)
+    const sclera = new THREE.Mesh(new THREE.SphereGeometry(0.082,10,8), scleraMat);
+    sclera.position.set(s*0.148,1.315,1.01); g.add(sclera);
+    // Coloured iris — large and vivid
+    const iris = new THREE.Mesh(new THREE.SphereGeometry(0.068,10,8), eyeMat);
+    iris.position.set(s*0.148,1.315,1.055); g.add(iris);
+    // Pupil (vertical slit)
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.032,8,7), pupilMat);
+    pupil.scale.set(0.45,1,0.6); pupil.position.set(s*0.148,1.315,1.095); g.add(pupil);
+    // Bright catchlight
+    const catch1 = new THREE.Mesh(new THREE.SphereGeometry(0.014,5,4), catchMat);
+    catch1.position.set(s*0.16,1.335,1.115); g.add(catch1);
+    const catch2 = new THREE.Mesh(new THREE.SphereGeometry(0.007,4,4), catchMat);
+    catch2.position.set(s*0.138,1.302,1.112); g.add(catch2);
+    // Fur around eye (dark)
+    const eyeFur = new THREE.Mesh(new THREE.SphereGeometry(0.075,8,7), saddleMat);
+    eyeFur.scale.set(1.3,1,0.35); eyeFur.position.set(s*0.148,1.315,1.0); g.add(eyeFur);
   });
 
   // Ears — shaped triangular with inner
@@ -489,7 +507,82 @@ function makeWolf(cfg={}) {
     paw.scale.set(1.1,0.7,1.3); paw.position.set(lp.x, 0.06, lp.z+0.04); g.add(paw);
   });
 
+  // Apply special coat patterns
+  if(preset.pattern==='mystic') applyMysticPattern(g);
+
   return g;
+}
+
+// ─── Mystic coat pattern: black + red stripes + silver swirls + gray hearts ──
+function applyMysticPattern(g) {
+  const redMat = new THREE.MeshStandardMaterial({
+    color:0xcc1010, emissive:new THREE.Color(0x550000), roughness:0.6, metalness:0.1,
+  });
+  const silverMat = new THREE.MeshStandardMaterial({
+    color:0xe0e4f0, emissive:new THREE.Color(0x202840), roughness:0.2, metalness:0.55,
+  });
+  const grayMat = new THREE.MeshStandardMaterial({
+    color:0x8888a0, emissive:new THREE.Color(0x101018), roughness:0.75, metalness:0.1,
+  });
+
+  // ── Red diagonal stripes across back, shoulders, flanks ──
+  const stripes = [
+    { x: 0.42, y:0.88, z: 0.3,  rx:0,    ry: 0.25, rz: 0.55 },
+    { x:-0.42, y:0.88, z: 0.3,  rx:0,    ry:-0.25, rz:-0.55 },
+    { x: 0.4,  y:0.78, z:-0.15, rx:0.1,  ry: 0.3,  rz: 0.5  },
+    { x:-0.4,  y:0.78, z:-0.15, rx:-0.1, ry:-0.3,  rz:-0.5  },
+    { x: 0,    y:0.98, z: 0.05, rx: 0.4, ry:0,     rz:0     },
+    { x: 0.3,  y:0.92, z:-0.35, rx:0.2,  ry: 0.15, rz: 0.45 },
+    { x:-0.3,  y:0.92, z:-0.35, rx:0.2,  ry:-0.15, rz:-0.45 },
+  ];
+  stripes.forEach(p=>{
+    const s = new THREE.Mesh(new THREE.BoxGeometry(0.07,0.42,0.1), redMat);
+    s.position.set(p.x,p.y,p.z); s.rotation.set(p.rx,p.ry,p.rz); g.add(s);
+  });
+  // Face stripe — down nose bridge
+  const faceStripe = new THREE.Mesh(new THREE.BoxGeometry(0.04,0.28,0.06), redMat);
+  faceStripe.position.set(0,1.32,1.02); faceStripe.rotation.x=0.15; g.add(faceStripe);
+
+  // ── Silver/white swirl tubes using CatmullRom curves ──
+  const swirlDefs = [
+    [ [-0.58,0.75,-0.38],[-0.52,0.95,-0.1],[-0.45,0.80,0.25],[-0.38,0.92,0.52] ],
+    [ [ 0.58,0.75,-0.38],[ 0.52,0.95,-0.1],[ 0.45,0.80,0.25],[ 0.38,0.92,0.52] ],
+    [ [-0.35,0.65,-0.55],[ 0.0, 0.70,-0.65],[ 0.35,0.65,-0.55] ],
+    [ [-0.22,1.22,0.94],[-0.05,1.36,1.06],[ 0.22,1.22,0.94] ],  // brow swirl
+    [ [-0.5,0.55,0.38],[-0.3,0.42,0.42],[-0.1,0.38,0.45] ],     // shoulder-leg swirl
+    [ [ 0.5,0.55,0.38],[ 0.3,0.42,0.42],[ 0.1,0.38,0.45] ],
+  ];
+  swirlDefs.forEach(pts=>{
+    const curve = new THREE.CatmullRomCurve3(pts.map(p=>new THREE.Vector3(...p)));
+    const tube  = new THREE.Mesh(new THREE.TubeGeometry(curve,14,0.042,7,false), silverMat);
+    g.add(tube);
+  });
+  // Silver tip on tail
+  const tailTipMat = new THREE.MeshStandardMaterial({color:0xd8dce8,emissive:new THREE.Color(0x181c24),roughness:0.4,metalness:0.4});
+  const tailTip2 = new THREE.Mesh(new THREE.SphereGeometry(0.13,8,7), tailTipMat);
+  tailTip2.position.set(0,1.24,-1.1); g.add(tailTip2);
+
+  // ── Gray wolf hearts — chest, shoulders, haunches ──
+  function addHeart(x,y,z,size,ry,rz=0){
+    const h = new THREE.Group();
+    const hs = size*0.52;
+    const L = new THREE.Mesh(new THREE.SphereGeometry(hs,8,7), grayMat);
+    L.position.set(-size*0.27,0,0); h.add(L);
+    const R = new THREE.Mesh(new THREE.SphereGeometry(hs,8,7), grayMat);
+    R.position.set( size*0.27,0,0); h.add(R);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(size*0.32,size*0.58,7), grayMat);
+    tip.position.set(0,-size*0.52,0); tip.rotation.z=Math.PI; h.add(tip);
+    h.position.set(x,y,z);
+    h.rotation.y=ry; h.rotation.z=rz;
+    h.scale.z=0.14;   // flatten like a fur marking
+    g.add(h);
+  }
+  addHeart(0,    0.74, 0.64, 0.24, 0);          // chest centre
+  addHeart( 0.44,0.86, 0.18, 0.18, 0.5);        // right shoulder
+  addHeart(-0.44,0.86, 0.18, 0.18,-0.5);        // left shoulder
+  addHeart( 0.42,0.72,-0.32, 0.16, 0.8);        // right haunch
+  addHeart(-0.42,0.72,-0.32, 0.16,-0.8);        // left haunch
+  addHeart(0,    0.82,-0.52, 0.14, Math.PI);    // lower back
 }
 
 // ─── Player wolf ──────────────────────────────────────────────────────────────
@@ -498,7 +591,7 @@ wolf.scale.setScalar(wolfConfig.scale * 1.15);
 scene.add(wolf);
 
 // ─── Mate wolf ────────────────────────────────────────────────────────────────
-const mateCfg = { preset:5, eyeIdx:2 }; // Tundra coat, ice eyes
+const mateCfg = { preset:6, eyeIdx:1 }; // Shadow coat, gold eyes
 const mateMesh = makeWolf(mateCfg);
 mateMesh.scale.setScalar(1.0);
 const mateStartX = 80+Math.random()*40, mateStartZ = 60+Math.random()*40;
