@@ -503,14 +503,6 @@ function makeWolf(cfg={}) {
   const saddleMat= mat(sadCol);
   const bellyMat = mat(bellyCol);
   const sockMat  = mat(sockCol);
-  // Eyes glow brightly — vivid and unmistakable
-  const eyeEmissiveMult = preset.pattern==='mystic' ? 2.5 : 1.2;
-  const eyeMat = new THREE.MeshStandardMaterial({
-    color:eyeCol,
-    emissive:new THREE.Color(eyeCol).multiplyScalar(eyeEmissiveMult),
-    emissiveIntensity:1.6,
-    roughness:0.05, metalness:0.2,
-  });
   const noseMat  = mat(0x1a1a18);
   const tongueMat= mat(0xd04858);
   const darkMat  = mat(sadCol);
@@ -583,39 +575,31 @@ function makeWolf(cfg={}) {
   const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.10,0.02,0.04), mouthMat);
   mouth.position.set(0,0.995,1.34); g.add(mouth);
 
-  // ── Eyes — large, glowing, unmistakable ──
-  const scleraMat = new THREE.MeshStandardMaterial({ color:0xfaf6ec, roughness:0.25, metalness:0.0 });
-  const pupilMat  = new THREE.MeshStandardMaterial({ color:0x010101, roughness:0.02, metalness:0.4 });
-  const catchMat  = new THREE.MeshBasicMaterial({ color:0xffffff });
-  const eyeGlowMat= new THREE.MeshStandardMaterial({
-    color:eyeCol, emissive:new THREE.Color(eyeCol),
-    emissiveIntensity:1.0, roughness:0.1, metalness:0,
-    transparent:true, opacity:0.22,
-  });
+  // ── Eyes — flat discs with depthTest:false, always visible through head mesh ──
+  function mkEyeMat(col, op){
+    return new THREE.MeshBasicMaterial({
+      color:col, transparent:op<1, opacity:op===undefined?1:op,
+      depthTest:false, side:THREE.DoubleSide,
+    });
+  }
   [-1,1].forEach(s=>{
-    // Dark socket recess
-    const socket = new THREE.Mesh(new THREE.SphereGeometry(0.100,10,8), saddleMat);
-    socket.scale.set(1.1,1.0,0.55); socket.position.set(s*0.148,1.222,1.042); g.add(socket);
-    // Soft outer glow halo (visible from wide angles)
-    const glow = new THREE.Mesh(new THREE.SphereGeometry(0.105,9,7), eyeGlowMat);
-    glow.position.set(s*0.148,1.222,1.090); g.add(glow);
+    const ex=s*0.19, ey=1.222, ez=1.155;
+    const rx=-0.14, ry=s*0.26;
+    // Glow halo
+    const glow=new THREE.Mesh(new THREE.CircleGeometry(0.105,12),mkEyeMat(eyeCol,0.32));
+    glow.position.set(ex,ey,ez); glow.rotation.set(rx,ry,0); glow.renderOrder=8; g.add(glow);
     // White sclera
-    const sclera = new THREE.Mesh(new THREE.SphereGeometry(0.086,10,8), scleraMat);
-    sclera.position.set(s*0.148,1.222,1.082); g.add(sclera);
-    // Coloured iris — large, pushed well out
-    const iris = new THREE.Mesh(new THREE.SphereGeometry(0.076,12,10), eyeMat);
-    iris.position.set(s*0.148,1.222,1.125); g.add(iris);
+    const sc=new THREE.Mesh(new THREE.CircleGeometry(0.088,14),mkEyeMat(0xfaf0d8));
+    sc.position.set(ex,ey,ez+0.001); sc.rotation.set(rx,ry,0); sc.renderOrder=9; g.add(sc);
+    // Coloured iris
+    const ir=new THREE.Mesh(new THREE.CircleGeometry(0.074,14),mkEyeMat(eyeCol));
+    ir.position.set(ex,ey,ez+0.002); ir.rotation.set(rx,ry,0); ir.renderOrder=10; g.add(ir);
     // Vertical slit pupil
-    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.036,8,7), pupilMat);
-    pupil.scale.set(0.40,1,0.52); pupil.position.set(s*0.148,1.222,1.168); g.add(pupil);
-    // Bright catchlights
-    const catch1 = new THREE.Mesh(new THREE.SphereGeometry(0.016,5,4), catchMat);
-    catch1.position.set(s*0.162,1.242,1.188); g.add(catch1);
-    const catch2 = new THREE.Mesh(new THREE.SphereGeometry(0.008,4,4), catchMat);
-    catch2.position.set(s*0.135,1.205,1.184); g.add(catch2);
-    // Dark fur brow frame
-    const eyeFur = new THREE.Mesh(new THREE.SphereGeometry(0.078,9,7), saddleMat);
-    eyeFur.scale.set(1.38,0.9,0.28); eyeFur.position.set(s*0.148,1.222,1.060); g.add(eyeFur);
+    const pu=new THREE.Mesh(new THREE.CircleGeometry(0.032,10),mkEyeMat(0x010101));
+    pu.scale.set(0.42,1,1); pu.position.set(ex,ey,ez+0.003); pu.rotation.set(rx,ry,0); pu.renderOrder=11; g.add(pu);
+    // Catchlight
+    const ca=new THREE.Mesh(new THREE.CircleGeometry(0.011,8),mkEyeMat(0xffffff));
+    ca.position.set(ex+s*0.016,ey+0.022,ez+0.004); ca.rotation.set(rx,ry,0); ca.renderOrder=12; g.add(ca);
   });
 
   // ── Ears — alert, upright, wide-set ──
