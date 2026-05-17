@@ -315,7 +315,7 @@ for(let i=0;i<40;i++){
 
 // ─── Spawn Pond (river pool next to start) ────────────────────────────────────
 (function buildSpawnPond(){
-  const cx=18, cz=14; // just NE of spawn
+  const cx=0, cz=-10; // right at spawn (player faces -Z)
   const pondY = 0.55;  // water surface height
 
   // Flatten surrounding terrain slightly — sink land verts near pond into water zone
@@ -510,113 +510,146 @@ function makeWolf(cfg={}) {
   const tongueMat= mat(0xd04858);
   const darkMat  = mat(sadCol);
 
-  // Body — elongated, deeper chest
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.54,12,9), bodyMat);
-  body.scale.set(1.1,0.88,1.75); body.position.y=0.72; body.castShadow=true; g.add(body);
-  // Saddle (dark back)
-  const saddle = new THREE.Mesh(new THREE.SphereGeometry(0.52,10,8), saddleMat);
-  saddle.scale.set(0.82,0.45,1.4); saddle.position.set(0,1.08,0); saddle.castShadow=false; g.add(saddle);
-  // Belly
-  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.32,9,7), bellyMat);
-  belly.scale.set(0.88,0.52,1.35); belly.position.set(0,0.38,0.05); g.add(belly);
-  // Chest tuff
-  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.28,8,7), bellyMat);
-  chest.scale.set(1,0.8,0.9); chest.position.set(0,0.72,0.6); g.add(chest);
+  // ── Body — low slung, long wolf torso ──
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.54,14,10), bodyMat);
+  body.scale.set(1.12,0.76,2.12); body.position.set(0,0.60,0); body.castShadow=true; g.add(body);
+  // Deep chest (wolf drops low between front legs)
+  const deepChest = new THREE.Mesh(new THREE.SphereGeometry(0.44,10,9), bodyMat);
+  deepChest.scale.set(1.08,1.12,0.80); deepChest.position.set(0,0.42,0.64); g.add(deepChest);
+  // Rump / haunches
+  const rump = new THREE.Mesh(new THREE.SphereGeometry(0.36,9,8), bodyMat);
+  rump.scale.set(1.02,0.90,0.82); rump.position.set(0,0.66,-0.72); g.add(rump);
+  // Shoulder blades (visible muscle bumps)
+  [-1,1].forEach(s=>{
+    const sb=new THREE.Mesh(new THREE.SphereGeometry(0.18,8,7), saddleMat);
+    sb.scale.set(0.9,0.62,0.75); sb.position.set(s*0.28,0.84,0.44); g.add(sb);
+  });
+  // Saddle (dark back stripe)
+  const saddle = new THREE.Mesh(new THREE.SphereGeometry(0.50,10,8), saddleMat);
+  saddle.scale.set(0.78,0.36,1.65); saddle.position.set(0,0.94,0.02); g.add(saddle);
+  // Belly — narrow, tucked up
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.30,9,7), bellyMat);
+  belly.scale.set(0.82,0.36,1.30); belly.position.set(0,0.24,0.06); g.add(belly);
+  // Chest tuft
+  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.22,8,7), bellyMat);
+  chest.scale.set(1.0,0.7,0.8); chest.position.set(0,0.46,0.80); g.add(chest);
 
-  // Neck — angled forward
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.3,0.4,9), bodyMat);
-  neck.position.set(0,1.1,0.56); neck.rotation.x=-0.45; neck.castShadow=true; g.add(neck);
-  // Neck underside
-  const neckB = new THREE.Mesh(new THREE.SphereGeometry(0.18,7,6), bellyMat);
-  neckB.position.set(0,0.88,0.62); g.add(neckB);
+  // ── Neck — thick, angled forward ──
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.30,0.44,9), bodyMat);
+  neck.position.set(0,0.98,0.68); neck.rotation.x=-0.52; neck.castShadow=true; g.add(neck);
+  const neckB = new THREE.Mesh(new THREE.SphereGeometry(0.17,7,6), bellyMat);
+  neckB.position.set(0,0.76,0.78); g.add(neckB);
 
-  // Head — more realistic proportions
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.3,12,10), bodyMat);
-  head.scale.set(1.08,1.0,1.22); head.position.set(0,1.28,0.88); head.castShadow=true; g.add(head);
-  // Brow ridge
-  const brow = new THREE.Mesh(new THREE.SphereGeometry(0.16,8,6), saddleMat);
-  brow.scale.set(1.4,0.4,0.7); brow.position.set(0,1.42,1.0); g.add(brow);
+  // ── Head — wedge-shaped, low ──
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.29,12,10), bodyMat);
+  head.scale.set(1.06,0.98,1.18); head.position.set(0,1.16,1.00); head.castShadow=true; g.add(head);
+  // Brow ridge (strong, pushed forward)
+  const brow = new THREE.Mesh(new THREE.SphereGeometry(0.15,8,6), saddleMat);
+  brow.scale.set(1.48,0.36,0.62); brow.position.set(0,1.30,1.10); g.add(brow);
   // Cheeks
   [-1,1].forEach(s=>{
-    const ch=new THREE.Mesh(new THREE.SphereGeometry(0.14,7,6), bodyMat);
-    ch.position.set(s*0.2,1.26,0.9); g.add(ch);
+    const ch=new THREE.Mesh(new THREE.SphereGeometry(0.13,7,6), bodyMat);
+    ch.position.set(s*0.19,1.14,1.02); g.add(ch);
+  });
+  // Jowls (loose skin under jaw — wolflike)
+  [-1,1].forEach(s=>{
+    const jw=new THREE.Mesh(new THREE.SphereGeometry(0.085,6,5), bodyMat);
+    jw.scale.set(0.9,0.7,0.8); jw.position.set(s*0.09,1.02,1.20); g.add(jw);
   });
 
-  // Snout — tapered
-  const snout = new THREE.Mesh(new THREE.BoxGeometry(0.2,0.16,0.35), bodyMat);
-  snout.position.set(0,1.16,1.09); snout.rotation.x=0.12; g.add(snout);
-  const snoutTip = new THREE.Mesh(new THREE.SphereGeometry(0.1,7,6), bodyMat);
-  snoutTip.scale.set(1,0.7,0.9); snoutTip.position.set(0,1.14,1.26); g.add(snoutTip);
-  // Nose — wet black
-  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.062,8,6), noseMat);
-  nose.scale.set(1.05,0.75,0.9); nose.position.set(0,1.18,1.26); g.add(nose);
+  // ── Snout — long muzzle, angled down ──
+  const snout = new THREE.Mesh(new THREE.BoxGeometry(0.20,0.14,0.46), bodyMat);
+  snout.position.set(0,1.05,1.20); snout.rotation.x=0.17; g.add(snout);
+  const snoutTip = new THREE.Mesh(new THREE.SphereGeometry(0.10,8,6), bodyMat);
+  snoutTip.scale.set(0.94,0.62,0.88); snoutTip.position.set(0,1.03,1.40); g.add(snoutTip);
+  // Upper lip
+  const upperLip=new THREE.Mesh(new THREE.SphereGeometry(0.068,7,5), bodyMat);
+  upperLip.scale.set(1.38,0.45,0.78); upperLip.position.set(0,1.06,1.36); g.add(upperLip);
+  // Nose — wet, wide
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.064,8,6), noseMat);
+  nose.scale.set(1.1,0.68,0.88); nose.position.set(0,1.07,1.42); g.add(nose);
   // Nostrils
   [-1,1].forEach(s=>{
     const n=new THREE.Mesh(new THREE.SphereGeometry(0.022,5,4), new THREE.MeshStandardMaterial({color:0x080808,roughness:0.6}));
-    n.position.set(s*0.038,1.165,1.285); g.add(n);
+    n.position.set(s*0.038,1.062,1.44); g.add(n);
   });
-  // Mouth line (subtle)
+  // Mouth line
   const mouthMat = new THREE.MeshStandardMaterial({ color:0x180808, roughness:0.9 });
-  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.12,0.02,0.04), mouthMat);
-  mouth.position.set(0,1.085,1.22); g.add(mouth);
+  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.10,0.02,0.04), mouthMat);
+  mouth.position.set(0,0.995,1.34); g.add(mouth);
 
-  // Eyes — large, glowing, unmistakable
+  // ── Eyes — vivid, forward-facing ──
   const scleraMat = new THREE.MeshStandardMaterial({ color:0xf8f4e8, roughness:0.3, metalness:0.0 });
   const pupilMat  = new THREE.MeshStandardMaterial({ color:0x020202, roughness:0.05, metalness:0.3 });
   const catchMat  = new THREE.MeshBasicMaterial({ color:0xffffff });
   [-1,1].forEach(s=>{
-    // Dark socket recess
-    const socket = new THREE.Mesh(new THREE.SphereGeometry(0.095,10,8), saddleMat);
-    socket.scale.set(1,1,0.6); socket.position.set(s*0.148,1.315,0.98); g.add(socket);
-    // White sclera (shows around iris)
-    const sclera = new THREE.Mesh(new THREE.SphereGeometry(0.082,10,8), scleraMat);
-    sclera.position.set(s*0.148,1.315,1.01); g.add(sclera);
-    // Coloured iris — large and vivid
-    const iris = new THREE.Mesh(new THREE.SphereGeometry(0.068,10,8), eyeMat);
-    iris.position.set(s*0.148,1.315,1.055); g.add(iris);
-    // Pupil (vertical slit)
+    const socket = new THREE.Mesh(new THREE.SphereGeometry(0.092,10,8), saddleMat);
+    socket.scale.set(1,1,0.58); socket.position.set(s*0.146,1.220,1.045); g.add(socket);
+    const sclera = new THREE.Mesh(new THREE.SphereGeometry(0.080,10,8), scleraMat);
+    sclera.position.set(s*0.146,1.220,1.068); g.add(sclera);
+    const iris = new THREE.Mesh(new THREE.SphereGeometry(0.066,10,8), eyeMat);
+    iris.position.set(s*0.146,1.220,1.106); g.add(iris);
     const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.032,8,7), pupilMat);
-    pupil.scale.set(0.45,1,0.6); pupil.position.set(s*0.148,1.315,1.095); g.add(pupil);
-    // Bright catchlight
-    const catch1 = new THREE.Mesh(new THREE.SphereGeometry(0.014,5,4), catchMat);
-    catch1.position.set(s*0.16,1.335,1.115); g.add(catch1);
+    pupil.scale.set(0.44,1,0.58); pupil.position.set(s*0.146,1.220,1.142); g.add(pupil);
+    const catch1 = new THREE.Mesh(new THREE.SphereGeometry(0.013,5,4), catchMat);
+    catch1.position.set(s*0.160,1.238,1.158); g.add(catch1);
     const catch2 = new THREE.Mesh(new THREE.SphereGeometry(0.007,4,4), catchMat);
-    catch2.position.set(s*0.138,1.302,1.112); g.add(catch2);
-    // Fur around eye (dark)
-    const eyeFur = new THREE.Mesh(new THREE.SphereGeometry(0.075,8,7), saddleMat);
-    eyeFur.scale.set(1.3,1,0.35); eyeFur.position.set(s*0.148,1.315,1.0); g.add(eyeFur);
+    catch2.position.set(s*0.133,1.205,1.155); g.add(catch2);
+    const eyeFur = new THREE.Mesh(new THREE.SphereGeometry(0.073,8,7), saddleMat);
+    eyeFur.scale.set(1.32,0.96,0.30); eyeFur.position.set(s*0.146,1.220,1.060); g.add(eyeFur);
   });
 
-  // Ears — shaped triangular with inner
-  const earGeo = new THREE.ConeGeometry(0.1,0.26,5);
+  // ── Ears — alert, upright, wide-set ──
+  const earGeo = new THREE.ConeGeometry(0.098,0.30,5);
   const innerEarMat = mat(0xc06870);
   [-1,1].forEach(s=>{
     const ear = new THREE.Mesh(earGeo, bodyMat);
-    ear.position.set(s*0.2,1.54,0.84); ear.rotation.z=s*0.28; ear.castShadow=true; g.add(ear);
-    const inner = new THREE.Mesh(new THREE.ConeGeometry(0.065,0.18,5), innerEarMat);
-    inner.position.set(s*0.2,1.54,0.85); inner.rotation.z=s*0.28; g.add(inner);
+    ear.position.set(s*0.198,1.44,0.92); ear.rotation.z=s*0.24; ear.rotation.x=-0.08;
+    ear.castShadow=true; g.add(ear);
+    const inner = new THREE.Mesh(new THREE.ConeGeometry(0.062,0.20,5), innerEarMat);
+    inner.position.set(s*0.198,1.44,0.93); inner.rotation.z=s*0.24; inner.rotation.x=-0.08; g.add(inner);
   });
 
-  // Tail — thick base, tapering
-  const tailBase = new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.05,0.55,8), bodyMat);
-  tailBase.position.set(0,0.9,-0.72); tailBase.rotation.x=0.85; tailBase.name='tail'; g.add(tailBase);
-  const tailTip = new THREE.Mesh(new THREE.SphereGeometry(0.1,7,6), bellyMat);
-  tailTip.position.set(0,1.22,-1.08); g.add(tailTip);
+  // ── Tail — bushy, carried in slight arc ──
+  // base segment (named for animation)
+  const tailBase = new THREE.Mesh(new THREE.CylinderGeometry(0.13,0.08,0.50,8), bodyMat);
+  tailBase.position.set(0,0.66,-0.84); tailBase.rotation.x=0.92; tailBase.name='tail';
+  tailBase.castShadow=true; g.add(tailBase);
+  // mid segment
+  const tailMid = new THREE.Mesh(new THREE.CylinderGeometry(0.10,0.07,0.38,7), bodyMat);
+  tailMid.position.set(0,0.96,-1.00); tailMid.rotation.x=1.18; g.add(tailMid);
+  // tip
+  const tailTip = new THREE.Mesh(new THREE.SphereGeometry(0.10,7,6), bellyMat);
+  tailTip.position.set(0,1.12,-1.14); g.add(tailTip);
 
-  // Legs — longer, more articulated with sock colouring
-  const legPositions = [
-    {name:'leg0', x: 0.3, z: 0.44},
-    {name:'leg1', x:-0.3, z: 0.44},
-    {name:'leg2', x: 0.3, z:-0.38},
-    {name:'leg3', x:-0.3, z:-0.38},
+  // ── Legs — articulated stance with visible knee angle ──
+  // Front legs pitch slightly forward, hind legs slightly back (digitigrade)
+  const legDefs = [
+    { name:'leg0', x: 0.29, z: 0.54, rx: 0.14 },
+    { name:'leg1', x:-0.29, z: 0.54, rx: 0.14 },
+    { name:'leg2', x: 0.27, z:-0.52, rx:-0.14 },
+    { name:'leg3', x:-0.27, z:-0.52, rx:-0.14 },
   ];
-  legPositions.forEach(lp=>{
-    const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.09,0.38,7), bodyMat);
-    thigh.position.set(lp.x, 0.52, lp.z); thigh.castShadow=true; g.add(thigh);
-    const shin  = new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.06,0.38,7), bodyMat);
-    shin.position.set(lp.x, 0.22, lp.z); shin.castShadow=true; shin.name=lp.name; g.add(shin);
-    const paw   = new THREE.Mesh(new THREE.SphereGeometry(0.09,7,6), sockMat);
-    paw.scale.set(1.1,0.7,1.3); paw.position.set(lp.x, 0.06, lp.z+0.04); g.add(paw);
+  legDefs.forEach(lp=>{
+    // upper leg (thigh / shoulder)
+    const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.11,0.085,0.40,7), bodyMat);
+    thigh.position.set(lp.x, 0.44, lp.z); thigh.rotation.x=lp.rx;
+    thigh.castShadow=true; g.add(thigh);
+    // knee joint bump
+    const knee=new THREE.Mesh(new THREE.SphereGeometry(0.075,6,5), bodyMat);
+    knee.position.set(lp.x, 0.20, lp.z + lp.rx*0.5); g.add(knee);
+    // lower leg (shin)
+    const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.075,0.055,0.38,7), bodyMat);
+    shin.position.set(lp.x, 0.18, lp.z); shin.rotation.x=-lp.rx*0.5;
+    shin.castShadow=true; shin.name=lp.name; g.add(shin);
+    // paw — wide, spread
+    const paw = new THREE.Mesh(new THREE.SphereGeometry(0.09,7,6), sockMat);
+    paw.scale.set(1.25,0.58,1.45); paw.position.set(lp.x, 0.04, lp.z+lp.rx*0.18+0.04); g.add(paw);
+    // toe detail (2 small spheres)
+    [-1,1].forEach(t=>{
+      const toe=new THREE.Mesh(new THREE.SphereGeometry(0.028,5,4), sockMat);
+      toe.position.set(lp.x+t*0.055, 0.04, lp.z+lp.rx*0.18+0.12); g.add(toe);
+    });
   });
 
   // Apply special coat patterns
@@ -639,13 +672,13 @@ function applyMysticPattern(g) {
 
   // ── Red diagonal stripes across back, shoulders, flanks ──
   const stripes = [
-    { x: 0.42, y:0.88, z: 0.3,  rx:0,    ry: 0.25, rz: 0.55 },
-    { x:-0.42, y:0.88, z: 0.3,  rx:0,    ry:-0.25, rz:-0.55 },
-    { x: 0.4,  y:0.78, z:-0.15, rx:0.1,  ry: 0.3,  rz: 0.5  },
-    { x:-0.4,  y:0.78, z:-0.15, rx:-0.1, ry:-0.3,  rz:-0.5  },
-    { x: 0,    y:0.98, z: 0.05, rx: 0.4, ry:0,     rz:0     },
-    { x: 0.3,  y:0.92, z:-0.35, rx:0.2,  ry: 0.15, rz: 0.45 },
-    { x:-0.3,  y:0.92, z:-0.35, rx:0.2,  ry:-0.15, rz:-0.45 },
+    { x: 0.42, y:0.76, z: 0.3,  rx:0,    ry: 0.25, rz: 0.55 },
+    { x:-0.42, y:0.76, z: 0.3,  rx:0,    ry:-0.25, rz:-0.55 },
+    { x: 0.4,  y:0.66, z:-0.15, rx:0.1,  ry: 0.3,  rz: 0.5  },
+    { x:-0.4,  y:0.66, z:-0.15, rx:-0.1, ry:-0.3,  rz:-0.5  },
+    { x: 0,    y:0.86, z: 0.05, rx: 0.4, ry:0,     rz:0     },
+    { x: 0.3,  y:0.80, z:-0.35, rx:0.2,  ry: 0.15, rz: 0.45 },
+    { x:-0.3,  y:0.80, z:-0.35, rx:0.2,  ry:-0.15, rz:-0.45 },
   ];
   stripes.forEach(p=>{
     const s = new THREE.Mesh(new THREE.BoxGeometry(0.07,0.42,0.1), redMat);
@@ -653,16 +686,16 @@ function applyMysticPattern(g) {
   });
   // Face stripe — down nose bridge
   const faceStripe = new THREE.Mesh(new THREE.BoxGeometry(0.04,0.28,0.06), redMat);
-  faceStripe.position.set(0,1.32,1.02); faceStripe.rotation.x=0.15; g.add(faceStripe);
+  faceStripe.position.set(0,1.20,1.08); faceStripe.rotation.x=0.15; g.add(faceStripe);
 
   // ── Silver/white swirl tubes using CatmullRom curves ──
   const swirlDefs = [
-    [ [-0.58,0.75,-0.38],[-0.52,0.95,-0.1],[-0.45,0.80,0.25],[-0.38,0.92,0.52] ],
-    [ [ 0.58,0.75,-0.38],[ 0.52,0.95,-0.1],[ 0.45,0.80,0.25],[ 0.38,0.92,0.52] ],
-    [ [-0.35,0.65,-0.55],[ 0.0, 0.70,-0.65],[ 0.35,0.65,-0.55] ],
-    [ [-0.22,1.22,0.94],[-0.05,1.36,1.06],[ 0.22,1.22,0.94] ],  // brow swirl
-    [ [-0.5,0.55,0.38],[-0.3,0.42,0.42],[-0.1,0.38,0.45] ],     // shoulder-leg swirl
-    [ [ 0.5,0.55,0.38],[ 0.3,0.42,0.42],[ 0.1,0.38,0.45] ],
+    [ [-0.58,0.63,-0.38],[-0.52,0.83,-0.1],[-0.45,0.68,0.25],[-0.38,0.80,0.52] ],
+    [ [ 0.58,0.63,-0.38],[ 0.52,0.83,-0.1],[ 0.45,0.68,0.25],[ 0.38,0.80,0.52] ],
+    [ [-0.35,0.53,-0.55],[ 0.0, 0.58,-0.65],[ 0.35,0.53,-0.55] ],
+    [ [-0.22,1.10,1.00],[-0.05,1.24,1.12],[ 0.22,1.10,1.00] ],  // brow swirl
+    [ [-0.5,0.43,0.38],[-0.3,0.30,0.42],[-0.1,0.26,0.45] ],     // shoulder-leg swirl
+    [ [ 0.5,0.43,0.38],[ 0.3,0.30,0.42],[ 0.1,0.26,0.45] ],
   ];
   swirlDefs.forEach(pts=>{
     const curve = new THREE.CatmullRomCurve3(pts.map(p=>new THREE.Vector3(...p)));
@@ -672,7 +705,7 @@ function applyMysticPattern(g) {
   // Silver tip on tail
   const tailTipMat = new THREE.MeshStandardMaterial({color:0xd8dce8,emissive:new THREE.Color(0x181c24),roughness:0.4,metalness:0.4});
   const tailTip2 = new THREE.Mesh(new THREE.SphereGeometry(0.13,8,7), tailTipMat);
-  tailTip2.position.set(0,1.24,-1.1); g.add(tailTip2);
+  tailTip2.position.set(0,1.14,-1.16); g.add(tailTip2);
 
   // ── Gray wolf hearts — chest, shoulders, haunches ──
   function addHeart(x,y,z,size,ry,rz=0){
@@ -689,12 +722,12 @@ function applyMysticPattern(g) {
     h.scale.z=0.14;   // flatten like a fur marking
     g.add(h);
   }
-  addHeart(0,    0.74, 0.64, 0.24, 0);          // chest centre
-  addHeart( 0.44,0.86, 0.18, 0.18, 0.5);        // right shoulder
-  addHeart(-0.44,0.86, 0.18, 0.18,-0.5);        // left shoulder
-  addHeart( 0.42,0.72,-0.32, 0.16, 0.8);        // right haunch
-  addHeart(-0.42,0.72,-0.32, 0.16,-0.8);        // left haunch
-  addHeart(0,    0.82,-0.52, 0.14, Math.PI);    // lower back
+  addHeart(0,    0.46, 0.78, 0.24, 0);          // chest centre
+  addHeart( 0.44,0.72, 0.22, 0.18, 0.5);        // right shoulder
+  addHeart(-0.44,0.72, 0.22, 0.18,-0.5);        // left shoulder
+  addHeart( 0.42,0.60,-0.34, 0.16, 0.8);        // right haunch
+  addHeart(-0.42,0.60,-0.34, 0.16,-0.8);        // left haunch
+  addHeart(0,    0.70,-0.54, 0.14, Math.PI);    // lower back
 }
 
 // ─── Player wolf ──────────────────────────────────────────────────────────────
@@ -1030,7 +1063,7 @@ class HunterWolf {
     this.mesh.scale.setScalar(1.25);
     this.mesh.visible = false;
     scene.add(this.mesh);
-    this.speed = 9.2;
+    this.speed = 10.5;
     this.stamina = 100;
     this.exhausted = false;
     this.exhaustTimer = 0;
@@ -1040,12 +1073,12 @@ class HunterWolf {
   }
   activate(playerPos){
     const angle = Math.random()*Math.PI*2;
-    const dist  = 80+Math.random()*40;
+    const dist  = 22+Math.random()*18; // spawn close — immediately threatening
     let x = playerPos.x+Math.cos(angle)*dist;
     let z = playerPos.z+Math.sin(angle)*dist;
     x = Math.max(-WORLD_SIZE/2+5, Math.min(WORLD_SIZE/2-5, x));
     z = Math.max(-WORLD_SIZE/2+5, Math.min(WORLD_SIZE/2-5, z));
-    this.mesh.position.set(x, terrainY(x,z)+0.9, z);
+    this.mesh.position.set(x, terrainY(x,z)+0.72, z);
     this.mesh.visible = true;
     this.active = true;
     this.stamina = 100;
@@ -1070,16 +1103,16 @@ class HunterWolf {
     let dz = playerPos.z-this.mesh.position.z;
     const l = Math.sqrt(dx*dx+dz*dz)+0.001;
     dx/=l; dz/=l;
-    this.stamina = Math.max(0, this.stamina-dt*9);
-    const tireFactor = this.stamina<30 ? 0.35+0.65*(this.stamina/30) : 1.0;
+    this.stamina = Math.max(0, this.stamina-dt*5); // drain slower → longer chases
+    const tireFactor = this.stamina<30 ? 0.4+0.6*(this.stamina/30) : 1.0;
     if(this.stamina<=0){
-      this.exhausted=true; this.exhaustTimer=7+Math.random()*5;
+      this.exhausted=true; this.exhaustTimer=5+Math.random()*4;
       return;
     }
     const spd = this.speed*tireFactor;
     this.mesh.position.x += dx*spd*dt;
     this.mesh.position.z += dz*spd*dt;
-    this.mesh.position.y = Math.max(terrainY(this.mesh.position.x,this.mesh.position.z)+0.9, 0.35);
+    this.mesh.position.y = Math.max(terrainY(this.mesh.position.x,this.mesh.position.z)+0.72, 0.35);
     this.mesh.rotation.y = Math.atan2(dx,dz);
     this.legPhase += spd*dt*3.5;
     ['leg0','leg2'].forEach(n=>{const leg=this.mesh.getObjectByName(n);if(leg)leg.rotation.x=Math.sin(this.legPhase)*0.65;});
@@ -1088,9 +1121,12 @@ class HunterWolf {
     if(tail) tail.rotation.y=Math.sin(this.legPhase*2)*0.5;
     this.mesh.position.x=Math.max(-WORLD_SIZE/2+5,Math.min(WORLD_SIZE/2-5,this.mesh.position.x));
     this.mesh.position.z=Math.max(-WORLD_SIZE/2+5,Math.min(WORLD_SIZE/2-5,this.mesh.position.z));
-    if(dist<3.2&&this.damageCooldown<=0){
+    if(dist<3.5&&this.damageCooldown<=0){
       player.health=Math.max(0,player.health-18);
-      this.damageCooldown=1.2;
+      this.damageCooldown=1.0;
+      // red screen flash
+      vigEl.classList.add('hurt');
+      setTimeout(()=>vigEl.classList.remove('hurt'),500);
       showNotif('A hunter wolf bites you! Run!');
     }
   }
@@ -1353,6 +1389,115 @@ const deathReason = document.getElementById('death-reason');
 let notifTimer=0;
 function showNotif(msg){ notifEl.textContent=msg; notifEl.classList.add('show'); notifTimer=3.5; }
 
+// ─── Minimap ──────────────────────────────────────────────────────────────────
+const minimapCanvas = document.getElementById('minimap');
+const mmCtx = minimapCanvas ? minimapCanvas.getContext('2d') : null;
+const MM = 150; // canvas size in px
+const MM_RADIUS = 140; // world units visible
+const MM_SCALE = MM / (MM_RADIUS * 2);
+const mapMarkers = [];
+
+function wm(wx, wz){ // world → minimap pixel (player-centred)
+  return [MM/2+(wx-player.pos.x)*MM_SCALE, MM/2+(wz-player.pos.z)*MM_SCALE];
+}
+function inMM(px,py,margin=4){ return px>=-margin&&px<=MM+margin&&py>=-margin&&py<=MM+margin; }
+
+function drawMinimap(){
+  if(!mmCtx||player.dead) return;
+  mmCtx.clearRect(0,0,MM,MM);
+  // Dark forest background
+  mmCtx.fillStyle='rgba(6,12,6,0.90)';
+  mmCtx.fillRect(0,0,MM,MM);
+
+  // Spawn pond — blue circle (cx=0, cz=-10)
+  const [pmx,pmz]=wm(0,-10);
+  const pr=Math.round(8.5*MM_SCALE);
+  if(inMM(pmx,pmz,pr)){
+    const gr=mmCtx.createRadialGradient(pmx,pmz,0,pmx,pmz,pr);
+    gr.addColorStop(0,'rgba(50,140,220,0.85)');
+    gr.addColorStop(1,'rgba(20,60,130,0.35)');
+    mmCtx.beginPath(); mmCtx.arc(pmx,pmz,pr,0,Math.PI*2);
+    mmCtx.fillStyle=gr; mmCtx.fill();
+  }
+
+  // Den — gold diamond
+  if(den.placed){
+    const [dx,dz]=wm(den.pos.x,den.pos.z);
+    if(inMM(dx,dz)){
+      mmCtx.save(); mmCtx.translate(dx,dz); mmCtx.rotate(Math.PI/4);
+      mmCtx.fillStyle='rgba(255,200,40,0.92)'; mmCtx.fillRect(-4,-4,8,8); mmCtx.restore();
+    }
+  }
+
+  // Animals — small dots
+  animals.forEach(a=>{
+    if(a.dead) return;
+    const [ax,az]=wm(a.mesh.position.x,a.mesh.position.z);
+    if(!inMM(ax,az)) return;
+    mmCtx.beginPath(); mmCtx.arc(ax,az,2,0,Math.PI*2);
+    mmCtx.fillStyle=a.type==='deer'?'rgba(200,165,75,0.70)':'rgba(155,125,65,0.70)';
+    mmCtx.fill();
+  });
+
+  // Mate — pink
+  const [mateX,mateZ]=wm(mateMesh.position.x,mateMesh.position.z);
+  if(inMM(mateX,mateZ)){
+    mmCtx.beginPath(); mmCtx.arc(mateX,mateZ,3.5,0,Math.PI*2);
+    mmCtx.fillStyle='rgba(255,130,180,0.92)'; mmCtx.fill();
+  }
+
+  // Pups — tiny pink
+  packState.pups.forEach(pup=>{
+    const [ppx,ppz]=wm(pup.mesh.position.x,pup.mesh.position.z);
+    if(!inMM(ppx,ppz)) return;
+    mmCtx.beginPath(); mmCtx.arc(ppx,ppz,2,0,Math.PI*2);
+    mmCtx.fillStyle='rgba(255,160,200,0.75)'; mmCtx.fill();
+  });
+
+  // Hunter wolves — red (prey mode)
+  if(preyMode){
+    hunterWolves.forEach(h=>{
+      if(!h.active) return;
+      const [hx,hz]=wm(h.mesh.position.x,h.mesh.position.z);
+      if(!inMM(hx,hz)) return;
+      mmCtx.beginPath(); mmCtx.arc(hx,hz,4,0,Math.PI*2);
+      mmCtx.fillStyle='rgba(255,35,15,0.96)'; mmCtx.fill();
+      // pulsing ring
+      mmCtx.beginPath(); mmCtx.arc(hx,hz,5+Math.sin(Date.now()*0.006)*2,0,Math.PI*2);
+      mmCtx.strokeStyle='rgba(255,80,40,0.6)'; mmCtx.lineWidth=1; mmCtx.stroke();
+    });
+  }
+
+  // User markers — gold X
+  mmCtx.strokeStyle='rgba(255,210,50,0.95)'; mmCtx.lineWidth=1.5;
+  mapMarkers.forEach(mk=>{
+    const [mkx,mkz]=wm(mk.x,mk.z);
+    if(!inMM(mkx,mkz,12)) return;
+    mmCtx.beginPath();
+    mmCtx.moveTo(mkx-5,mkz-5); mmCtx.lineTo(mkx+5,mkz+5);
+    mmCtx.moveTo(mkx+5,mkz-5); mmCtx.lineTo(mkx-5,mkz+5);
+    mmCtx.stroke();
+    // label
+    if(mk.label){ mmCtx.fillStyle='rgba(255,210,50,0.7)'; mmCtx.font='7px sans-serif'; mmCtx.fillText(mk.label,mkx+6,mkz-3); }
+  });
+
+  // Player — white/red triangle facing direction
+  mmCtx.save();
+  mmCtx.translate(MM/2, MM/2);
+  mmCtx.rotate(-player.yaw);
+  mmCtx.beginPath(); mmCtx.moveTo(0,-7); mmCtx.lineTo(-4,5); mmCtx.lineTo(4,5); mmCtx.closePath();
+  mmCtx.fillStyle=preyMode?'rgba(255,80,50,1.0)':'rgba(255,255,255,1.0)'; mmCtx.fill();
+  mmCtx.restore();
+
+  // North indicator
+  mmCtx.fillStyle='rgba(255,255,255,0.32)'; mmCtx.font='bold 8px sans-serif'; mmCtx.textAlign='center';
+  mmCtx.fillText('N',MM/2,10);
+
+  // Border
+  mmCtx.strokeStyle='rgba(255,255,255,0.14)'; mmCtx.lineWidth=1;
+  mmCtx.strokeRect(0.5,0.5,MM-1,MM-1);
+}
+
 // ─── Day / Night Cycle ────────────────────────────────────────────────────────
 let timeOfDay=0.25;
 const skyDawn =new THREE.Color(0xffa060), skyNoon=new THREE.Color(0x87ceeb);
@@ -1408,10 +1553,9 @@ function updateSky(dt){
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 function isInWater(pos){
-  // natural sea-level water
   if(terrainY(pos.x,pos.z)<0.32) return true;
-  // spawn pond area
-  const dx=pos.x-18, dz=pos.z-14;
+  // spawn pond (at 0, -10)
+  const dx=pos.x, dz=pos.z+10;
   return Math.sqrt(dx*dx+dz*dz)<9.5;
 }
 
@@ -1510,6 +1654,21 @@ function updatePlayer(dt){
   // Prey mode toggle
   if(keys['KeyP']&&!player._pWas){ player._pWas=true; togglePreyMode(); }
   if(!keys['KeyP']) player._pWas=false;
+  // Map marker (M key)
+  if(keys['KeyM']&&!player._mWas){ player._mWas=true;
+    let removed=false;
+    for(let i=mapMarkers.length-1;i>=0;i--){
+      const mk=mapMarkers[i];
+      if(Math.sqrt((mk.x-player.pos.x)**2+(mk.z-player.pos.z)**2)<10){
+        mapMarkers.splice(i,1); removed=true; showNotif('Map marker removed.'); break;
+      }
+    }
+    if(!removed&&mapMarkers.length<20){
+      mapMarkers.push({x:player.pos.x, z:player.pos.z, label:mapMarkers.length>0?String(mapMarkers.length+1):'1'});
+      showNotif('Marker '+(mapMarkers.length)+' placed on map.');
+    }
+  }
+  if(!keys['KeyM']) player._mWas=false;
 
   // G key — dig den or exit den
   if(keys['KeyG']&&!player._gWas){ player._gWas=true;
@@ -1577,7 +1736,7 @@ function updatePlayer(dt){
     notifEl.classList.add('show');
   }
   // Wolf mesh — crouch lowers body
-  wolf.position.copy(player.pos); wolf.position.y -= player.crouching ? 1.2 : 0.9;
+  wolf.position.copy(player.pos); wolf.position.y -= player.crouching ? 1.05 : 0.72;
   const targetScaleY = player.crouching ? 0.72 : 1.0;
   wolf.scale.y += (targetScaleY - wolf.scale.y) * 0.15;
   if(move.lengthSq()>0) wolf.rotation.y=Math.atan2(move.x,move.z);
@@ -1824,6 +1983,7 @@ function loop(now){
       c.position.z=Math.sin(c.userData.ang)*c.userData.rad;
       c.lookAt(new THREE.Vector3(c.position.x,c.position.y-50,c.position.z));
     });
+    drawMinimap();
   }
 
   renderer.render(scene, camera);
