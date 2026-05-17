@@ -22,6 +22,10 @@ const POUNCE_RANGE   = 9;
 const DEN_FOOD_MAX   = 5;
 const BERRY_COUNT    = 60;
 const FISH_COUNT     = 18;
+const LAKE_X         = -160;
+const LAKE_Z         = -200;
+const LAKE_R         = 62;
+const LAKE_Y         = 0.65;
 
 // ─── Noise ────────────────────────────────────────────────────────────────────
 function hash(x,y){let n=Math.sin(x*127.1+y*311.7)*43758.5453;return n-Math.floor(n)}
@@ -427,6 +431,99 @@ for(let i=0;i<40;i++){
   }
 })();
 
+// ─── Huge Lake (southwest) ────────────────────────────────────────────────────
+(function buildLake(){
+  const lakeFloor = LAKE_Y - 0.85;
+  for(let i=0;i<posAttr.count;i++){
+    const px=posAttr.getX(i), pz=posAttr.getZ(i);
+    const d=Math.sqrt((px-LAKE_X)*(px-LAKE_X)+(pz-LAKE_Z)*(pz-LAKE_Z));
+    if(d<LAKE_R-2){
+      posAttr.setY(i, lakeFloor);
+    } else if(d<LAKE_R+22){
+      const t=(d-(LAKE_R-2))/24, ts=t*t*(3-2*t);
+      posAttr.setY(i, lakeFloor*(1-ts)+posAttr.getY(i)*ts);
+    }
+  }
+  posAttr.needsUpdate=true;
+  tGeo.computeVertexNormals();
+
+  // Deep center
+  const deepGeo=new THREE.CircleGeometry(LAKE_R*0.62,48); deepGeo.rotateX(-Math.PI/2);
+  const deepMesh=new THREE.Mesh(deepGeo,new THREE.MeshStandardMaterial({color:0x0c1e30,transparent:true,opacity:0.94,roughness:0.02,metalness:0.6}));
+  deepMesh.position.set(LAKE_X,LAKE_Y,LAKE_Z); scene.add(deepMesh);
+  // Shallow ring
+  const shallowGeo=new THREE.RingGeometry(LAKE_R*0.58,LAKE_R,48); shallowGeo.rotateX(-Math.PI/2);
+  const shallowMesh=new THREE.Mesh(shallowGeo,new THREE.MeshStandardMaterial({color:0x1a5888,transparent:true,opacity:0.82,roughness:0.04,metalness:0.35}));
+  shallowMesh.position.set(LAKE_X,LAKE_Y+0.01,LAKE_Z); scene.add(shallowMesh);
+  // Shore gradient
+  const shoreGeo=new THREE.RingGeometry(LAKE_R-3,LAKE_R+10,48); shoreGeo.rotateX(-Math.PI/2);
+  const shoreMesh=new THREE.Mesh(shoreGeo,new THREE.MeshStandardMaterial({color:0x0e3a55,transparent:true,opacity:0.40,roughness:0.1}));
+  shoreMesh.position.set(LAKE_X,LAKE_Y+0.02,LAKE_Z); scene.add(shoreMesh);
+
+  // Shore rocks
+  const rmA=new THREE.MeshStandardMaterial({color:0x4a4840,roughness:0.88,metalness:0.06});
+  const rmB=new THREE.MeshStandardMaterial({color:0x6a6560,roughness:0.84,metalness:0.05});
+  for(let i=0;i<36;i++){
+    const a=i/36*Math.PI*2+(Math.random()-0.5)*0.25;
+    const r=LAKE_R+0.5+Math.random()*3.5, s=0.4+Math.random()*1.4;
+    const rk=new THREE.Mesh(new THREE.DodecahedronGeometry(s,0),Math.random()>0.5?rmA:rmB);
+    rk.position.set(LAKE_X+Math.cos(a)*r,LAKE_Y-s*0.3,LAKE_Z+Math.sin(a)*r);
+    rk.rotation.set(Math.random()*Math.PI,Math.random()*Math.PI,Math.random()*Math.PI);
+    rk.castShadow=rk.receiveShadow=true; scene.add(rk);
+  }
+  // Submerged rocks
+  for(let i=0;i<12;i++){
+    const a=Math.random()*Math.PI*2, r=8+Math.random()*LAKE_R*0.7, s=0.2+Math.random()*0.5;
+    const rk=new THREE.Mesh(new THREE.DodecahedronGeometry(s,0),rmA);
+    rk.position.set(LAKE_X+Math.cos(a)*r,LAKE_Y+s*0.2,LAKE_Z+Math.sin(a)*r);
+    rk.rotation.set(Math.random()*Math.PI,Math.random()*Math.PI,Math.random()*Math.PI);
+    scene.add(rk);
+  }
+
+  // Lily pads
+  const lilyM=new THREE.MeshStandardMaterial({color:0x2a5e18,roughness:0.9});
+  const flowerM=new THREE.MeshStandardMaterial({color:0xf8e8f0,roughness:0.7,emissive:new THREE.Color(0x180808)});
+  for(let i=0;i<40;i++){
+    const a=Math.random()*Math.PI*2, r=4+Math.random()*LAKE_R*0.85;
+    const pad=new THREE.Mesh(new THREE.CircleGeometry(0.42+Math.random()*0.32,10),lilyM);
+    pad.rotation.x=-Math.PI/2;
+    pad.position.set(LAKE_X+Math.cos(a)*r,LAKE_Y+0.03,LAKE_Z+Math.sin(a)*r);
+    scene.add(pad);
+    if(Math.random()>0.45){
+      const fl=new THREE.Mesh(new THREE.SphereGeometry(0.075,6,5),flowerM);
+      fl.position.set(LAKE_X+Math.cos(a)*r,LAKE_Y+0.12,LAKE_Z+Math.sin(a)*r); scene.add(fl);
+    }
+  }
+
+  // Reeds and cattails
+  const reedM=new THREE.MeshStandardMaterial({color:0x5a7a2a,roughness:0.95});
+  const cattailM=new THREE.MeshStandardMaterial({color:0x5a3010,roughness:0.92});
+  for(let i=0;i<65;i++){
+    const a=Math.random()*Math.PI*2, r=LAKE_R-4+Math.random()*10;
+    const h=1.3+Math.random()*2.0;
+    const st=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.04,h,5),reedM);
+    st.position.set(LAKE_X+Math.cos(a)*r,LAKE_Y+h/2,LAKE_Z+Math.sin(a)*r); scene.add(st);
+    if(Math.random()>0.38){
+      const hd=new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.07,0.32,7),cattailM);
+      hd.position.set(LAKE_X+Math.cos(a)*r,LAKE_Y+h+0.15,LAKE_Z+Math.sin(a)*r); scene.add(hd);
+    }
+  }
+
+  // Small rocky islands
+  const islandM=new THREE.MeshStandardMaterial({color:0x4e4a38,roughness:0.88});
+  for(let i=0;i<4;i++){
+    const a=(i/4)*Math.PI*2+Math.random()*0.8, r=14+Math.random()*28;
+    const ix=LAKE_X+Math.cos(a)*r, iz=LAKE_Z+Math.sin(a)*r;
+    const isl=new THREE.Mesh(new THREE.SphereGeometry(2.5+Math.random()*2,9,7),islandM);
+    isl.scale.set(1,0.28,1); isl.position.set(ix,LAKE_Y+0.18,iz);
+    isl.receiveShadow=isl.castShadow=true; scene.add(isl);
+    if(Math.random()>0.3){
+      const st=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.04,1.4,5),reedM);
+      st.position.set(ix,LAKE_Y+0.85,iz); scene.add(st);
+    }
+  }
+})();
+
 // ─── Berry Bushes ─────────────────────────────────────────────────────────────
 const berryBushes = [];
 const bushMat  = new THREE.MeshStandardMaterial({ color:0x1e3e10, roughness:0.9 });
@@ -471,6 +568,19 @@ for(let i=0;i<FISH_COUNT;i++){
   g.rotation.y=Math.random()*Math.PI*2;
   scene.add(g);
   fishList.push({ mesh:g, angle:Math.random()*Math.PI*2, cx:fx, cz:fz, caught:false });
+}
+// Extra fish in the huge lake
+for(let i=0;i<12;i++){
+  const fa=Math.random()*Math.PI*2, fr=6+Math.random()*LAKE_R*0.82;
+  const fx=LAKE_X+Math.cos(fa)*fr, fz=LAKE_Z+Math.sin(fa)*fr;
+  const g=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.SphereGeometry(0.18,7,5),fishBodyMat);
+  body.scale.set(1,0.55,2.2); g.add(body);
+  const tail=new THREE.Mesh(new THREE.ConeGeometry(0.12,0.2,5),fishBodyMat);
+  tail.position.z=-0.38; tail.rotation.x=Math.PI/2; g.add(tail);
+  g.position.set(fx,LAKE_Y+0.05,fz); g.rotation.y=Math.random()*Math.PI*2;
+  scene.add(g);
+  fishList.push({mesh:g,angle:Math.random()*Math.PI*2,cx:fx,cz:fz,caught:false});
 }
 
 // ─── Grass ────────────────────────────────────────────────────────────────────
@@ -961,16 +1071,29 @@ function makeRabbit(){
 
 // ─── Animal AI ────────────────────────────────────────────────────────────────
 class Animal{
-  constructor(mesh,maxHealth,speed,type){
+  constructor(mesh,maxHealth,speed,type,options={}){
     this.mesh=mesh;this.health=maxHealth;this.maxHealth=maxHealth;
     this.speed=speed;this.type=type;this.state='idle';
     this.target=new THREE.Vector3();this.timer=Math.random()*5;
     this.dead=false;this.legPhase=0;
     this.stamina=100; this.exhausted=false; this.exhaustTimer=0;
-    // Spawn away from player start
+    this.docile=options.docile||false;
     let x,z;
-    do { x=(Math.random()-0.5)*WORLD_SIZE*0.8; z=(Math.random()-0.5)*WORLD_SIZE*0.8; }
-    while(Math.sqrt(x*x+z*z)<30); // keep away from spawn pond
+    if(this.docile){
+      // Spawn on map edge — spread across all 4 sides
+      const side=Math.floor(Math.random()*4);
+      const edgeDist=238+Math.random()*48;
+      const spread=(Math.random()-0.5)*WORLD_SIZE*0.55;
+      if(side===0){x=spread;z=-edgeDist;}
+      else if(side===1){x=spread;z=edgeDist;}
+      else if(side===2){x=edgeDist;z=spread;}
+      else{x=-edgeDist;z=spread;}
+      x=Math.max(-WORLD_SIZE/2+5,Math.min(WORLD_SIZE/2-5,x));
+      z=Math.max(-WORLD_SIZE/2+5,Math.min(WORLD_SIZE/2-5,z));
+    } else {
+      do{x=(Math.random()-0.5)*WORLD_SIZE*0.8;z=(Math.random()-0.5)*WORLD_SIZE*0.8;}
+      while(Math.sqrt(x*x+z*z)<30);
+    }
     mesh.position.set(x,terrainY(x,z)+0.05,z);
     scene.add(mesh);
   }
@@ -985,7 +1108,7 @@ class Animal{
       if(this.exhaustTimer<=0){ this.exhausted=false; this.stamina=100; this.state='idle'; this.timer=4; }
     }
 
-    if(!this.exhausted){
+    if(!this.exhausted && !this.docile){
       const fleeR=(this.type==='deer'?22:14)*(player.crouching?0.35:1.0);
       if(dist<fleeR && this.state!=='flee'){ this.state='flee'; this.timer=6; }
       if(this.state==='flee' && this.timer<0) this.state='wander';
@@ -1053,6 +1176,9 @@ class Animal{
 const animals=[];
 for(let i=0;i<DEER_COUNT;  i++) animals.push(new Animal(makeDeer(),  60,4.5,'deer'));
 for(let i=0;i<RABBIT_COUNT;i++) animals.push(new Animal(makeRabbit(),20,3.8,'rabbit'));
+// Docile (non-fleeing) prey at map edges — easy food for new players
+for(let i=0;i<9;  i++) animals.push(new Animal(makeDeer(),  60,4.5,'deer',  {docile:true}));
+for(let i=0;i<14; i++) animals.push(new Animal(makeRabbit(),20,3.8,'rabbit',{docile:true}));
 
 // ─── Hunter Wolves (Prey Mode) ───────────────────────────────────────────────
 let preyMode = false;
@@ -1415,6 +1541,23 @@ function drawMinimap(){
   mmCtx.fillStyle='rgba(6,12,6,0.90)';
   mmCtx.fillRect(0,0,MM,MM);
 
+  // Huge lake
+  const [lmx,lmz]=wm(LAKE_X,LAKE_Z);
+  const lmr=Math.round(LAKE_R*MM_SCALE);
+  if(inMM(lmx,lmz,lmr+12)){
+    const lgr=mmCtx.createRadialGradient(lmx,lmz,0,lmx,lmz,lmr);
+    lgr.addColorStop(0,'rgba(14,40,90,0.95)');
+    lgr.addColorStop(0.55,'rgba(28,90,170,0.80)');
+    lgr.addColorStop(1,'rgba(10,40,90,0.25)');
+    mmCtx.beginPath(); mmCtx.arc(lmx,lmz,lmr,0,Math.PI*2);
+    mmCtx.fillStyle=lgr; mmCtx.fill();
+    // Label if near
+    if(inMM(lmx,lmz,10)){
+      mmCtx.fillStyle='rgba(120,190,255,0.55)'; mmCtx.font='7px sans-serif';
+      mmCtx.textAlign='center'; mmCtx.fillText('LAKE',lmx,lmz); mmCtx.textAlign='left';
+    }
+  }
+
   // Spawn pond — blue circle (cx=0, cz=-10)
   const [pmx,pmz]=wm(0,-10);
   const pr=Math.round(8.5*MM_SCALE);
@@ -1435,14 +1578,22 @@ function drawMinimap(){
     }
   }
 
-  // Animals — small dots
+  // Animals — small dots (docile ones brighter/larger)
   animals.forEach(a=>{
     if(a.dead) return;
     const [ax,az]=wm(a.mesh.position.x,a.mesh.position.z);
     if(!inMM(ax,az)) return;
-    mmCtx.beginPath(); mmCtx.arc(ax,az,2,0,Math.PI*2);
-    mmCtx.fillStyle=a.type==='deer'?'rgba(200,165,75,0.70)':'rgba(155,125,65,0.70)';
-    mmCtx.fill();
+    if(a.docile){
+      mmCtx.beginPath(); mmCtx.arc(ax,az,3,0,Math.PI*2);
+      mmCtx.fillStyle='rgba(230,210,100,0.92)'; mmCtx.fill();
+      // small ring to highlight
+      mmCtx.beginPath(); mmCtx.arc(ax,az,4.5,0,Math.PI*2);
+      mmCtx.strokeStyle='rgba(255,230,100,0.45)'; mmCtx.lineWidth=1; mmCtx.stroke();
+    } else {
+      mmCtx.beginPath(); mmCtx.arc(ax,az,2,0,Math.PI*2);
+      mmCtx.fillStyle=a.type==='deer'?'rgba(200,165,75,0.70)':'rgba(155,125,65,0.70)';
+      mmCtx.fill();
+    }
   });
 
   // Mate — pink
@@ -1560,9 +1711,11 @@ function updateSky(dt){
 // ─── Utilities ────────────────────────────────────────────────────────────────
 function isInWater(pos){
   if(terrainY(pos.x,pos.z)<0.32) return true;
-  // spawn pond (at 0, -10)
   const dx=pos.x, dz=pos.z+10;
-  return Math.sqrt(dx*dx+dz*dz)<9.5;
+  if(Math.sqrt(dx*dx+dz*dz)<9.5) return true;
+  // huge lake
+  const lx=pos.x-LAKE_X, lz=pos.z-LAKE_Z;
+  return Math.sqrt(lx*lx+lz*lz)<LAKE_R;
 }
 
 // ─── Howl ─────────────────────────────────────────────────────────────────────
