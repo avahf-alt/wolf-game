@@ -106,10 +106,14 @@
     #ingame-cust-btn{position:absolute;top:174px;left:88px;padding:3px 10px;background:rgba(0,0,0,.55);border:1px solid rgba(255,220,100,.3);color:rgba(255,220,100,.65);font-family:'Georgia',serif;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;pointer-events:all;transition:all .25s;white-space:nowrap}
     #ingame-cust-btn:hover{border-color:rgba(255,220,100,.75);color:rgba(255,220,100,.95);background:rgba(255,220,100,.08)}
 
-    /* ── Prey Mode ── */
+    /* ── Prey Mode / Catch Prey ── */
     #prey-btn{position:absolute;bottom:28px;left:50%;transform:translateX(-50%);padding:7px 20px;background:transparent;border:2px solid rgba(255,255,255,.35);color:rgba(255,255,255,.72);font-family:'Georgia',serif;font-size:11px;letter-spacing:2px;text-transform:uppercase;cursor:pointer;pointer-events:all;transition:all .3s;white-space:nowrap}
     #prey-btn.active{border-color:rgba(255,60,40,.9);color:rgba(255,80,50,.95);background:rgba(200,0,0,.14);animation:prey-pulse 1.4s ease-in-out infinite}
     @keyframes prey-pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,60,40,0)}50%{box-shadow:0 0 10px 3px rgba(255,60,40,.4)}}
+    #catch-prey-btn{position:absolute;bottom:28px;right:24px;padding:7px 20px;background:transparent;border:2px solid rgba(200,160,60,.5);color:rgba(220,180,80,.85);font-family:'Georgia',serif;font-size:11px;letter-spacing:2px;text-transform:uppercase;cursor:pointer;pointer-events:all;transition:all .3s;white-space:nowrap}
+    #catch-prey-btn:hover{border-color:rgba(220,180,80,.9);color:rgba(255,210,90,.95);background:rgba(180,140,40,.14)}
+    #catch-prey-btn:active{background:rgba(220,180,80,.25)}
+    #btn-catch{width:72px;height:72px;right:112px;bottom:52px;font-size:11px;color:rgba(220,180,80,.9);border-color:rgba(200,160,40,.5)}
   </style>
 </head>
 <body>
@@ -215,6 +219,7 @@
     <span>M — Map Marker</span>
   </div>
   <button id="prey-btn">Become Prey</button>
+  <button id="catch-prey-btn">🦌 Catch Prey</button>
   <!-- Mobile -->
   <div id="touch-controls">
     <div id="joystick-zone"><div id="joystick-base"></div><div id="joystick-knob"></div></div>
@@ -224,6 +229,7 @@
     <div class="touch-btn" id="btn-bond">BOND ♥</div>
     <div class="touch-btn" id="btn-sprint">RUN</div>
     <div class="touch-btn" id="btn-prey">PREY</div>
+    <div class="touch-btn" id="btn-catch">CATCH</div>
   </div>
 </div>
 
