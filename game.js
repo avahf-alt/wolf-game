@@ -318,14 +318,16 @@ for(let i=0;i<40;i++){
   const cx=0, cz=-10; // right at spawn (player faces -Z)
   const pondY = 0.55;  // water surface height
 
-  // Flatten surrounding terrain slightly — sink land verts near pond into water zone
+  // Carve a bowl in the terrain so the water surface is always visible
+  const pondFloor = pondY - 0.7; // well below water surface
   for(let i=0;i<posAttr.count;i++){
     const px=posAttr.getX(i), pz=posAttr.getZ(i);
     const d=Math.sqrt((px-cx)*(px-cx)+(pz-cz)*(pz-cz));
-    if(d<9){
-      const blend=Math.max(0,1-(d/9));
-      const cur=posAttr.getY(i);
-      posAttr.setY(i, cur*(1-blend*0.92) + (pondY-0.3)*blend*0.92);
+    if(d<8.5){
+      posAttr.setY(i, pondFloor); // flat pond bed, guaranteed below water
+    } else if(d<14){
+      const t=(d-8.5)/5.5, ts=t*t*(3-2*t); // smooth step
+      posAttr.setY(i, pondFloor*(1-ts)+posAttr.getY(i)*ts);
     }
   }
   posAttr.needsUpdate=true;
@@ -490,7 +492,8 @@ scene.add(grassInst);
 // ─── Wolf builder (shared for player, mate, pups) ──────────────────────────
 function makeWolf(cfg={}) {
   const preset = COAT_PRESETS[cfg.preset ?? 0];
-  const eyeCol = EYE_COLORS[cfg.eyeIdx ?? 0].color;
+  const safeEyeIdx = Math.max(0, Math.min(EYE_COLORS.length-1, cfg.eyeIdx ?? 0));
+  const eyeCol = EYE_COLORS[safeEyeIdx].color;
   const baseCol  = cfg.baseColor  ?? preset.base;
   const sadCol   = cfg.saddle     ?? preset.saddle;
   const bellyCol = cfg.belly      ?? preset.belly;
@@ -1879,7 +1882,8 @@ COAT_PRESETS.forEach((p,i)=>{
     document.querySelectorAll('.coat-swatch').forEach(s=>s.classList.remove('active'));
     sw.classList.add('active');
     wolfConfig.preset=i;
-    wolfConfig.eyeIdx = COAT_PRESETS[i].eye ? EYE_COLORS.findIndex(e=>e.color===COAT_PRESETS[i].eye) : wolfConfig.eyeIdx;
+    const eyeMatch = EYE_COLORS.findIndex(e=>e.color===COAT_PRESETS[i].eye);
+    if(eyeMatch >= 0) wolfConfig.eyeIdx = eyeMatch;
     rebuildCustWolf();
     // Sync eye selection
     document.querySelectorAll('.eye-dot').forEach((d,di)=>d.classList.toggle('active',di===wolfConfig.eyeIdx));
@@ -1931,6 +1935,15 @@ document.getElementById('cust-confirm').addEventListener('click',()=>{
 
 // ─── Prey Mode Button ─────────────────────────────────────────────────────────
 document.getElementById('prey-btn').addEventListener('click', togglePreyMode);
+
+// ─── Catch Prey Button ────────────────────────────────────────────────────────
+document.getElementById('catch-prey-btn').addEventListener('click', tryAttack);
+// Mobile bind
+const catchMobileBtn = document.getElementById('btn-catch');
+if(catchMobileBtn){
+  catchMobileBtn.addEventListener('touchstart',e=>{e.preventDefault();tryAttack();catchMobileBtn.classList.add('pressed');},{passive:false});
+  catchMobileBtn.addEventListener('touchend',e=>{e.preventDefault();catchMobileBtn.classList.remove('pressed');},{passive:false});
+}
 
 // ─── Splash ───────────────────────────────────────────────────────────────────
 const splash = document.getElementById('splash');
