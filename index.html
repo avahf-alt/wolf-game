@@ -102,6 +102,9 @@
     /* ── Minimap ── */
     #minimap{position:absolute;top:20px;left:16px;width:150px;height:150px;border-radius:5px;border:1px solid rgba(255,255,255,.15);image-rendering:pixelated}
     #mm-hint{position:absolute;top:174px;left:16px;color:rgba(255,255,255,.28);font-size:9px;letter-spacing:1.5px;text-transform:uppercase}
+    /* ── In-game customizer button ── */
+    #ingame-cust-btn{position:absolute;top:174px;left:88px;padding:3px 10px;background:rgba(0,0,0,.55);border:1px solid rgba(255,220,100,.3);color:rgba(255,220,100,.65);font-family:'Georgia',serif;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;pointer-events:all;transition:all .25s;white-space:nowrap}
+    #ingame-cust-btn:hover{border-color:rgba(255,220,100,.75);color:rgba(255,220,100,.95);background:rgba(255,220,100,.08)}
 
     /* ── Prey Mode ── */
     #prey-btn{position:absolute;bottom:28px;left:50%;transform:translateX(-50%);padding:7px 20px;background:transparent;border:2px solid rgba(255,255,255,.35);color:rgba(255,255,255,.72);font-family:'Georgia',serif;font-size:11px;letter-spacing:2px;text-transform:uppercase;cursor:pointer;pointer-events:all;transition:all .3s;white-space:nowrap}
@@ -148,7 +151,7 @@
       <input id="wolf-name-input" type="text" maxlength="18" placeholder="Name your wolf…" autocomplete="off" autocorrect="off" spellcheck="false"/>
     </div>
 
-    <button id="cust-confirm">Done — Enter the Wild</button>
+    <button id="cust-confirm">Done — Apply Changes</button>
   </div>
 </div>
 
@@ -176,6 +179,7 @@
 <div id="hud">
   <canvas id="minimap" width="150" height="150"></canvas>
   <div id="mm-hint">M — Mark</div>
+  <button id="ingame-cust-btn">🐺 Customize</button>
   <div id="crosshair"></div>
   <div id="vignette"></div>
   <div id="howl-ring"></div>
@@ -206,6 +210,7 @@
     <span>G — Dig Den / Enter</span>
     <span>Z — Sleep (inside den)</span>
     <span>Mouse — Look</span>
+    <span>T — Customize Wolf</span>
     <span>P — Become Prey</span>
     <span>M — Map Marker</span>
   </div>

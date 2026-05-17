@@ -503,9 +503,14 @@ function makeWolf(cfg={}) {
   const saddleMat= mat(sadCol);
   const bellyMat = mat(bellyCol);
   const sockMat  = mat(sockCol);
-  // Eyes glow more for Mystic preset
-  const eyeEmissiveMult = preset.pattern==='mystic' ? 1.2 : 0.5;
-  const eyeMat = new THREE.MeshStandardMaterial({ color:eyeCol, emissive:new THREE.Color(eyeCol).multiplyScalar(eyeEmissiveMult), roughness:0.1, metalness:0.15 });
+  // Eyes glow brightly — vivid and unmistakable
+  const eyeEmissiveMult = preset.pattern==='mystic' ? 2.5 : 1.2;
+  const eyeMat = new THREE.MeshStandardMaterial({
+    color:eyeCol,
+    emissive:new THREE.Color(eyeCol).multiplyScalar(eyeEmissiveMult),
+    emissiveIntensity:1.6,
+    roughness:0.05, metalness:0.2,
+  });
   const noseMat  = mat(0x1a1a18);
   const tongueMat= mat(0xd04858);
   const darkMat  = mat(sadCol);
@@ -578,25 +583,39 @@ function makeWolf(cfg={}) {
   const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.10,0.02,0.04), mouthMat);
   mouth.position.set(0,0.995,1.34); g.add(mouth);
 
-  // ── Eyes — vivid, forward-facing ──
-  const scleraMat = new THREE.MeshStandardMaterial({ color:0xf8f4e8, roughness:0.3, metalness:0.0 });
-  const pupilMat  = new THREE.MeshStandardMaterial({ color:0x020202, roughness:0.05, metalness:0.3 });
+  // ── Eyes — large, glowing, unmistakable ──
+  const scleraMat = new THREE.MeshStandardMaterial({ color:0xfaf6ec, roughness:0.25, metalness:0.0 });
+  const pupilMat  = new THREE.MeshStandardMaterial({ color:0x010101, roughness:0.02, metalness:0.4 });
   const catchMat  = new THREE.MeshBasicMaterial({ color:0xffffff });
+  const eyeGlowMat= new THREE.MeshStandardMaterial({
+    color:eyeCol, emissive:new THREE.Color(eyeCol),
+    emissiveIntensity:1.0, roughness:0.1, metalness:0,
+    transparent:true, opacity:0.22,
+  });
   [-1,1].forEach(s=>{
-    const socket = new THREE.Mesh(new THREE.SphereGeometry(0.092,10,8), saddleMat);
-    socket.scale.set(1,1,0.58); socket.position.set(s*0.146,1.220,1.045); g.add(socket);
-    const sclera = new THREE.Mesh(new THREE.SphereGeometry(0.080,10,8), scleraMat);
-    sclera.position.set(s*0.146,1.220,1.068); g.add(sclera);
-    const iris = new THREE.Mesh(new THREE.SphereGeometry(0.066,10,8), eyeMat);
-    iris.position.set(s*0.146,1.220,1.106); g.add(iris);
-    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.032,8,7), pupilMat);
-    pupil.scale.set(0.44,1,0.58); pupil.position.set(s*0.146,1.220,1.142); g.add(pupil);
-    const catch1 = new THREE.Mesh(new THREE.SphereGeometry(0.013,5,4), catchMat);
-    catch1.position.set(s*0.160,1.238,1.158); g.add(catch1);
-    const catch2 = new THREE.Mesh(new THREE.SphereGeometry(0.007,4,4), catchMat);
-    catch2.position.set(s*0.133,1.205,1.155); g.add(catch2);
-    const eyeFur = new THREE.Mesh(new THREE.SphereGeometry(0.073,8,7), saddleMat);
-    eyeFur.scale.set(1.32,0.96,0.30); eyeFur.position.set(s*0.146,1.220,1.060); g.add(eyeFur);
+    // Dark socket recess
+    const socket = new THREE.Mesh(new THREE.SphereGeometry(0.100,10,8), saddleMat);
+    socket.scale.set(1.1,1.0,0.55); socket.position.set(s*0.148,1.222,1.042); g.add(socket);
+    // Soft outer glow halo (visible from wide angles)
+    const glow = new THREE.Mesh(new THREE.SphereGeometry(0.105,9,7), eyeGlowMat);
+    glow.position.set(s*0.148,1.222,1.090); g.add(glow);
+    // White sclera
+    const sclera = new THREE.Mesh(new THREE.SphereGeometry(0.086,10,8), scleraMat);
+    sclera.position.set(s*0.148,1.222,1.082); g.add(sclera);
+    // Coloured iris — large, pushed well out
+    const iris = new THREE.Mesh(new THREE.SphereGeometry(0.076,12,10), eyeMat);
+    iris.position.set(s*0.148,1.222,1.125); g.add(iris);
+    // Vertical slit pupil
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.036,8,7), pupilMat);
+    pupil.scale.set(0.40,1,0.52); pupil.position.set(s*0.148,1.222,1.168); g.add(pupil);
+    // Bright catchlights
+    const catch1 = new THREE.Mesh(new THREE.SphereGeometry(0.016,5,4), catchMat);
+    catch1.position.set(s*0.162,1.242,1.188); g.add(catch1);
+    const catch2 = new THREE.Mesh(new THREE.SphereGeometry(0.008,4,4), catchMat);
+    catch2.position.set(s*0.135,1.205,1.184); g.add(catch2);
+    // Dark fur brow frame
+    const eyeFur = new THREE.Mesh(new THREE.SphereGeometry(0.078,9,7), saddleMat);
+    eyeFur.scale.set(1.38,0.9,0.28); eyeFur.position.set(s*0.148,1.222,1.060); g.add(eyeFur);
   });
 
   // ── Ears — alert, upright, wide-set ──
@@ -1844,6 +1863,7 @@ function animateCust(){
 
 function openCustomizer(){
   custEl.classList.add('open');
+  document.exitPointerLock();
   initCustRenderer();
   rebuildCustWolf();
   if(!custAnimId) animateCust();
@@ -1851,10 +1871,15 @@ function openCustomizer(){
 function closeCustomizer(){
   custEl.classList.remove('open');
   if(custAnimId){ cancelAnimationFrame(custAnimId); custAnimId=null; }
+  // Re-lock mouse if the game has started (splash is hidden)
+  if(!isMobile && splash.classList.contains('hidden')){
+    setTimeout(()=>canvas.requestPointerLock(), 80);
+  }
 }
 
 document.getElementById('cust-close').addEventListener('click', closeCustomizer);
 document.getElementById('customize-btn').addEventListener('click', openCustomizer);
+document.getElementById('ingame-cust-btn').addEventListener('click', openCustomizer);
 
 // Build coat grid
 const coatGrid = document.getElementById('coat-grid');
@@ -1938,6 +1963,12 @@ function loop(now){
   requestAnimationFrame(loop);
   const dt=Math.min((now-lastTime)/1000,0.05);
   lastTime=now;
+
+  // T key — open/close in-game customizer from anywhere
+  if(keys['KeyT']&&!keys._tWas){ keys._tWas=true;
+    if(custEl.classList.contains('open')) closeCustomizer(); else openCustomizer();
+  }
+  if(!keys['KeyT']) keys._tWas=false;
 
   if(!player.dead && !custEl.classList.contains('open')){
     updatePlayer(dt);
