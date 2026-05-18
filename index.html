@@ -98,6 +98,9 @@
     #btn-sprint{width:56px;height:56px;right:28px;bottom:136px}
     #btn-prey{width:56px;height:56px;right:196px;bottom:20px;font-size:10px;color:rgba(255,100,80,.9);border-color:rgba(255,80,60,.4)}
     #btn-prey.active{background:rgba(200,0,0,.2);border-color:rgba(255,60,40,.9);color:rgba(255,80,50,1)}
+    #btn-fly{width:72px;height:72px;right:196px;bottom:76px;font-size:10px;color:rgba(180,100,255,.9);border-color:rgba(160,80,255,.5)}
+    #btn-fly.active{background:rgba(120,0,220,.25);border-color:rgba(200,100,255,.95);color:rgba(210,150,255,1);animation:fly-pulse 1s ease-in-out infinite}
+    @keyframes fly-pulse{0%,100%{box-shadow:0 0 0 0 rgba(180,80,255,0)}50%{box-shadow:0 0 12px 4px rgba(180,80,255,.5)}}
 
     /* ── Minimap ── */
     #minimap{position:absolute;top:20px;left:16px;width:150px;height:150px;border-radius:5px;border:1px solid rgba(255,255,255,.15);image-rendering:pixelated}
@@ -114,6 +117,9 @@
     #catch-prey-btn:hover{border-color:rgba(220,180,80,.9);color:rgba(255,210,90,.95);background:rgba(180,140,40,.14)}
     #catch-prey-btn:active{background:rgba(220,180,80,.25)}
     #btn-catch{width:72px;height:72px;right:112px;bottom:52px;font-size:11px;color:rgba(220,180,80,.9);border-color:rgba(200,160,40,.5)}
+    #fly-btn{position:absolute;bottom:68px;right:24px;padding:7px 20px;background:transparent;border:2px solid rgba(160,80,255,.55);color:rgba(180,100,255,.85);font-family:'Georgia',serif;font-size:11px;letter-spacing:2px;text-transform:uppercase;cursor:pointer;pointer-events:all;transition:all .3s;white-space:nowrap}
+    #fly-btn:hover{border-color:rgba(200,120,255,.9);color:rgba(210,140,255,.95);background:rgba(100,0,200,.12)}
+    #fly-btn.active{border-color:rgba(200,100,255,.95);color:rgba(220,160,255,1);background:rgba(120,0,220,.18);animation:fly-pulse 1s ease-in-out infinite}
   </style>
 </head>
 <body>
@@ -209,6 +215,7 @@
     <span>SHIFT — Sprint</span>
     <span>SPACE — Howl</span>
     <span>E — Attack / Eat / Drink</span>
+    <span>V — Fly / Land</span>
     <span>F — Bond / Mate</span>
     <span>C — Crouch / Stalk</span>
     <span>G — Dig Den / Enter</span>
@@ -220,6 +227,7 @@
   </div>
   <button id="prey-btn">Become Prey</button>
   <button id="catch-prey-btn">🦌 Catch Prey</button>
+  <button id="fly-btn">🦅 Fly</button>
   <!-- Mobile -->
   <div id="touch-controls">
     <div id="joystick-zone"><div id="joystick-base"></div><div id="joystick-knob"></div></div>
@@ -230,6 +238,7 @@
     <div class="touch-btn" id="btn-sprint">RUN</div>
     <div class="touch-btn" id="btn-prey">PREY</div>
     <div class="touch-btn" id="btn-catch">CATCH</div>
+    <div class="touch-btn" id="btn-fly">FLY</div>
   </div>
 </div>
 

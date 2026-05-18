@@ -55,13 +55,15 @@ const EYE_COLORS = [
   { color:0x44ff88, label:'Jade'   },
   { color:0xff4466, label:'Ember'  },
   { color:0xffffff, label:'White'  },
+  { color:0xff0808, label:'Red'    },
 ];
 
 let wolfConfig = {
-  preset:   0,   // 0 = Mystic (default)
-  eyeIdx:   2,   // Ice blue eyes for Mystic
+  preset:   0,    // Mystic — jet black coat
+  eyeIdx:   6,    // Red eyes
   scale:    1.0,
-  name:     'Wolf',
+  name:     'Shadow',
+  wings:    true, // huge red wings
 };
 
 // ─── Scene Setup ─────────────────────────────────────────────────────────────
@@ -844,6 +846,52 @@ function applyMysticPattern(g) {
   addHeart( 0.42,0.60,-0.34, 0.16, 0.8);        // right haunch
   addHeart(-0.42,0.60,-0.34, 0.16,-0.8);        // left haunch
   addHeart(0,    0.70,-0.54, 0.14, Math.PI);    // lower back
+
+  // ── Wings — huge demon/dragon wings, shown when cfg.wings is true ──
+  if(cfg.wings){
+    const wMat=new THREE.MeshStandardMaterial({
+      color:0x9a0808, side:THREE.DoubleSide, roughness:0.65, metalness:0.1,
+      emissive:new THREE.Color(0x380000), emissiveIntensity:0.55,
+      transparent:true, opacity:0.92,
+    });
+    const bMat=new THREE.MeshStandardMaterial({color:0x100202,roughness:0.88});
+    [-1,1].forEach(s=>{
+      const wg=new THREE.Group();
+      wg.name=s>0?'wing_r':'wing_l';
+      wg.position.set(s*0.22,0.86,-0.10);
+      g.add(wg);
+      // 4-point wing membrane quad (two triangles)
+      const v=new Float32Array([
+        0,   0.0,  0.0,   // 0 root (shoulder)
+        s*5.0, 2.2,-0.1,  // 1 wing tip
+        s*4.2,-0.6,-2.4,  // 2 trailing tip
+        s*0.1,-0.4,-2.3,  // 3 trailing root
+      ]);
+      const geo=new THREE.BufferGeometry();
+      geo.setAttribute('position',new THREE.BufferAttribute(v,3));
+      geo.setIndex([0,1,2, 0,2,3, 2,1,0, 3,2,0]); // front + back faces
+      geo.computeVertexNormals();
+      const wMesh=new THREE.Mesh(geo,wMat);
+      wMesh.castShadow=true; wg.add(wMesh);
+      // Main spar bone: root → tip
+      const tipV=new THREE.Vector3(s*5.0,2.2,-0.1);
+      const sparLen=tipV.length();
+      const spar=new THREE.Mesh(new THREE.CylinderGeometry(0.062,0.038,sparLen,7),bMat);
+      spar.position.copy(tipV.clone().multiplyScalar(0.5));
+      spar.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),tipV.clone().normalize());
+      spar.castShadow=true; wg.add(spar);
+      // Two trailing finger bones
+      [[s*4.2,-0.6,-2.4],[s*2.2,-0.2,-2.0]].forEach(([tx,ty,tz])=>{
+        const tv=new THREE.Vector3(tx,ty,tz);
+        const fl=new THREE.Mesh(new THREE.CylinderGeometry(0.030,0.018,tv.length()*0.72,6),bMat);
+        fl.position.copy(tv.clone().multiplyScalar(0.36));
+        fl.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),tv.clone().normalize());
+        wg.add(fl);
+      });
+    });
+  }
+
+  return g;
 }
 
 // ─── Player wolf ──────────────────────────────────────────────────────────────
@@ -1182,6 +1230,23 @@ for(let i=0;i<14; i++) animals.push(new Animal(makeRabbit(),20,3.8,'rabbit',{doc
 
 // ─── Hunter Wolves (Prey Mode) ───────────────────────────────────────────────
 let preyMode = false;
+let flying   = false;
+
+function toggleFly(){
+  flying=!flying;
+  const btn=document.getElementById('fly-btn');
+  const mBtn=document.getElementById('btn-fly');
+  if(flying){
+    if(btn){btn.textContent='⬇ Land';btn.classList.add('active');}
+    if(mBtn) mBtn.classList.add('active');
+    player.vel.y=5; // initial upward kick
+    showNotif('Wings spread — you soar! SPACE = rise, SHIFT = descend.');
+  } else {
+    if(btn){btn.textContent='🦅 Fly';btn.classList.remove('active');}
+    if(mBtn) mBtn.classList.remove('active');
+    showNotif('You descend to earth.');
+  }
+}
 
 const HUNTER_CONFIGS = [
   { preset:3, eyeIdx:1 },  // Obsidian + gold eyes
@@ -1728,19 +1793,22 @@ function triggerHowl(){
   animals.forEach(a=>{ if(!a.dead&&a.mesh.position.distanceTo(player.pos)<HOWL_RADIUS){a.state='flee';a.timer=6;} });
 }
 
-// ─── Attack ───────────────────────────────────────────────────────────────────
-function tryAttack(){
-  if(player.attackCooldown>0||player.stamina<8) return;
+// ─── Attack / Catch ───────────────────────────────────────────────────────────
+function tryAttack(fromBtn=false){
+  if(player.attackCooldown>0) return;
+  if(player.stamina<8&&!fromBtn) return;
   player.attacking=true;
   const isPounce = player.pounceReady;
-  player.attackCooldown = isPounce ? 1.0 : 0.6;
-  player.stamina=Math.max(0,player.stamina-(isPounce?22:8));
+  player.attackCooldown = isPounce ? 1.0 : 0.5;
+  if(player.stamina>=8) player.stamina=Math.max(0,player.stamina-(isPounce?22:6));
   let hit=false;
   const range = isPounce ? POUNCE_RANGE : ATTACK_RANGE;
   animals.forEach(a=>{
     if(a.dead) return;
-    if(a.mesh.position.distanceTo(player.pos)<range){
-      const dmg=isPounce?(55+Math.random()*25):(18+Math.random()*12);
+    // Docile (tame edge) prey catchable at generous range
+    const catchRange = a.docile ? Math.max(range, 7.0) : range;
+    if(a.mesh.position.distanceTo(player.pos)<catchRange){
+      const dmg = a.docile ? 9999 : (isPounce?(55+Math.random()*25):(18+Math.random()*12));
       a.takeDamage(dmg); hit=true;
       if(isPounce) showNotif('Pounce! You pin it to the ground.');
       if(a.dead){
@@ -1837,10 +1905,14 @@ function updatePlayer(dt){
   }
   if(!keys['KeyG']) player._gWas=false;
 
-  const sprinting=!player.crouching&&(keys['ShiftLeft']||keys['ShiftRight']||touchState.sprint);
+  // V key — toggle fly
+  if(keys['KeyV']&&!keys._vWas){ keys._vWas=true; toggleFly(); }
+  if(!keys['KeyV']) keys._vWas=false;
+
+  const sprinting=!player.crouching&&!flying&&(keys['ShiftLeft']||keys['ShiftRight']||touchState.sprint);
   const moving   =keys['KeyW']||keys['KeyS']||keys['KeyA']||keys['KeyD']||joystick.active;
   const cMult    = player.crouching ? CROUCH_MULT : 1.0;
-  const spd=WOLF_SPEED*cMult*(sprinting&&player.stamina>0?SPRINT_MULT:1.0);
+  const flySpd   = flying ? WOLF_SPEED*1.6 : WOLF_SPEED*cMult*(sprinting&&player.stamina>0?SPRINT_MULT:1.0);
   // Pounce ready: sprinting toward an animal within range
   player.pounceReady=false;
   if(sprinting && player.stamina>20){
@@ -1853,9 +1925,19 @@ function updatePlayer(dt){
   if(keys['KeyA']) move.addScaledVector(right,-1);
   if(joystick.active){ move.addScaledVector(fwd,-joystick.dy); move.addScaledVector(right,joystick.dx); }
   if(move.lengthSq()>0) move.normalize();
-  player.vel.x=move.x*spd; player.vel.z=move.z*spd;
+  player.vel.x=move.x*flySpd; player.vel.z=move.z*flySpd;
   const ty=terrainY(player.pos.x,player.pos.z)+0.9;
-  if(player.pos.y>ty){ player.vel.y-=GRAVITY*dt; } else { player.vel.y=0; player.pos.y=ty; player.grounded=true; }
+  if(flying){
+    // Fly physics: Space = rise, Shift = descend, otherwise gentle glide down
+    if(keys['Space']) player.vel.y=Math.min(player.vel.y+18*dt,12);
+    else if(keys['ShiftLeft']||keys['ShiftRight']) player.vel.y=Math.max(player.vel.y-18*dt,-10);
+    else player.vel.y=Math.max(player.vel.y-4*dt,-3); // slow glide descent
+    player.grounded=false;
+    // Don't go below terrain while flying
+    if(player.pos.y<ty){ player.pos.y=ty; player.vel.y=0; }
+  } else {
+    if(player.pos.y>ty){ player.vel.y-=GRAVITY*dt; } else { player.vel.y=0; player.pos.y=ty; player.grounded=true; }
+  }
   player.pos.addScaledVector(player.vel,dt);
   player.pos.x=Math.max(-WORLD_SIZE/2+5,Math.min(WORLD_SIZE/2-5,player.pos.x));
   player.pos.z=Math.max(-WORLD_SIZE/2+5,Math.min(WORLD_SIZE/2-5,player.pos.z));
@@ -1864,7 +1946,11 @@ function updatePlayer(dt){
   // Vitals decay
   player.hunger=Math.max(0,player.hunger-dt*100/160);
   player.thirst=Math.max(0,player.thirst-dt*100/114);
-  if(isInWater(player.pos)) player.thirst=Math.min(100,player.thirst+6*dt);
+  if(isInWater(player.pos)){
+    const wasLow=player.thirst<30;
+    player.thirst=Math.min(100,player.thirst+10*dt); // faster auto-drink
+    if(wasLow&&player.thirst>=30) showNotif('You drink deeply from the water.');
+  }
   if(player.hunger<10) player.health=Math.max(0,player.health-4*dt);
   if(player.thirst<10) player.health=Math.max(0,player.health-6*dt);
   if(player.hunger>50&&player.thirst>50) player.health=Math.min(100,player.health+2*dt);
@@ -1882,7 +1968,7 @@ function updatePlayer(dt){
   // Actions
   if(keys['KeyE']||touchState.attack) tryAttack();
   if(touchState.howl&&!player.howling){ touchState.howl=false; triggerHowl(); }
-  if(keys['Space']&&!player.howling) triggerHowl();
+  if(keys['Space']&&!player.howling&&!flying) triggerHowl();
   packState.eCooldown=Math.max(0,packState.eCooldown-dt);
   if((keys['KeyF']&&!fWasDown)||touchState.bond){ fWasDown=true; touchState.bond=false; tryBondOrMate(); }
   if(!keys['KeyF']) fWasDown=false;
@@ -1900,7 +1986,7 @@ function updatePlayer(dt){
   wolf.scale.y += (targetScaleY - wolf.scale.y) * 0.15;
   if(move.lengthSq()>0) wolf.rotation.y=Math.atan2(move.x,move.z);
   if(moving){
-    player.legPhase+=spd*dt*3.5;
+    player.legPhase+=flySpd*dt*3.5;
     ['leg0','leg2'].forEach(n=>{const l=wolf.getObjectByName(n);if(l)l.rotation.x=Math.sin(player.legPhase)*0.65;});
     ['leg1','leg3'].forEach(n=>{const l=wolf.getObjectByName(n);if(l)l.rotation.x=-Math.sin(player.legPhase)*0.65;});
     const tail=wolf.getObjectByName('tail'); if(tail) tail.rotation.y=Math.sin(player.legPhase*2)*0.4;
@@ -1908,6 +1994,20 @@ function updatePlayer(dt){
     const br=Math.sin(Date.now()*0.002)*0.025;
     if(wolf.children[0]) wolf.children[0].scale.y=0.88+br;
   }
+  // Wing animation
+  const wt=Date.now()*0.004;
+  ['wing_r','wing_l'].forEach((name,i)=>{
+    const w=wolf.getObjectByName(name); if(!w) return;
+    const side=name==='wing_r'?1:-1;
+    if(flying){
+      // Fast flapping when ascending, slow glide otherwise
+      const flapSpeed=keys['Space']?8:3;
+      w.rotation.z=side*(0.15+Math.sin(wt*flapSpeed+i*Math.PI)*0.32);
+    } else {
+      // Gently fold/rest with slight breathing motion
+      w.rotation.z=side*(0.08+Math.sin(wt*0.7)*0.06);
+    }
+  });
   // Camera
   const offset=cameraOffset.clone().applyEuler(new THREE.Euler(mouseY*0.6,player.yaw,0,'YXZ'));
   const camPos=new THREE.Vector3().copy(player.pos).add(offset);
@@ -2090,13 +2190,17 @@ document.getElementById('cust-confirm').addEventListener('click',()=>{
 document.getElementById('prey-btn').addEventListener('click', togglePreyMode);
 
 // ─── Catch Prey Button ────────────────────────────────────────────────────────
-document.getElementById('catch-prey-btn').addEventListener('click', tryAttack);
-// Mobile bind
-const catchMobileBtn = document.getElementById('btn-catch');
+document.getElementById('catch-prey-btn').addEventListener('click',()=>tryAttack(true));
+const catchMobileBtn=document.getElementById('btn-catch');
 if(catchMobileBtn){
-  catchMobileBtn.addEventListener('touchstart',e=>{e.preventDefault();tryAttack();catchMobileBtn.classList.add('pressed');},{passive:false});
-  catchMobileBtn.addEventListener('touchend',e=>{e.preventDefault();catchMobileBtn.classList.remove('pressed');},{passive:false});
+  catchMobileBtn.addEventListener('touchstart',e=>{e.preventDefault();tryAttack(true);catchMobileBtn.classList.add('pressed');},{passive:false});
+  catchMobileBtn.addEventListener('touchend',  e=>{e.preventDefault();catchMobileBtn.classList.remove('pressed');},{passive:false});
 }
+
+// ─── Fly Button ───────────────────────────────────────────────────────────────
+document.getElementById('fly-btn').addEventListener('click', toggleFly);
+const flyMobileBtn=document.getElementById('btn-fly');
+if(flyMobileBtn) flyMobileBtn.addEventListener('touchstart',e=>{e.preventDefault();toggleFly();},{passive:false});
 
 // ─── Splash ───────────────────────────────────────────────────────────────────
 const splash = document.getElementById('splash');
