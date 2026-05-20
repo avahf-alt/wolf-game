@@ -66,6 +66,18 @@ let wolfConfig = {
   wings:    true, // huge red wings
 };
 
+// ─── Splash boot — register immediately so any later crash can't block it ────
+{
+  const splashEl = document.getElementById('splash');
+  const startBtn  = document.getElementById('start-btn');
+  function doStartGame(){
+    splashEl.classList.add('hidden');
+    try { if(!isMobile) document.getElementById('canvas').requestPointerLock(); } catch(e){}
+    setTimeout(()=>{ splashEl.style.display='none'; }, 1100);
+  }
+  if(startBtn) startBtn.addEventListener('click', doStartGame);
+}
+
 // ─── Scene Setup ─────────────────────────────────────────────────────────────
 const canvas   = document.getElementById('canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -849,53 +861,59 @@ function applyMysticPattern(g) {
 
   // ── Wings — huge demon/dragon wings, shown when cfg.wings is true ──
   if(cfg.wings){
-    const wMat=new THREE.MeshStandardMaterial({
-      color:0x9a0808, side:THREE.DoubleSide, roughness:0.65, metalness:0.1,
-      emissive:new THREE.Color(0x380000), emissiveIntensity:0.55,
-      transparent:true, opacity:0.92,
-    });
-    const bMat=new THREE.MeshStandardMaterial({color:0x100202,roughness:0.88});
-    [-1,1].forEach(s=>{
-      const wg=new THREE.Group();
-      wg.name=s>0?'wing_r':'wing_l';
-      wg.position.set(s*0.22,0.86,-0.10);
-      g.add(wg);
-      // 4-point wing membrane quad (two triangles)
-      const v=new Float32Array([
-        0,   0.0,  0.0,   // 0 root (shoulder)
-        s*5.0, 2.2,-0.1,  // 1 wing tip
-        s*4.2,-0.6,-2.4,  // 2 trailing tip
-        s*0.1,-0.4,-2.3,  // 3 trailing root
-      ]);
-      const geo=new THREE.BufferGeometry();
-      geo.setAttribute('position',new THREE.BufferAttribute(v,3));
-      geo.setIndex([0,1,2, 0,2,3, 2,1,0, 3,2,0]); // front + back faces
-      geo.computeVertexNormals();
-      const wMesh=new THREE.Mesh(geo,wMat);
-      wMesh.castShadow=true; wg.add(wMesh);
-      // Main spar bone: root → tip
-      const tipV=new THREE.Vector3(s*5.0,2.2,-0.1);
-      const sparLen=tipV.length();
-      const spar=new THREE.Mesh(new THREE.CylinderGeometry(0.062,0.038,sparLen,7),bMat);
-      spar.position.copy(tipV.clone().multiplyScalar(0.5));
-      spar.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),tipV.clone().normalize());
-      spar.castShadow=true; wg.add(spar);
-      // Two trailing finger bones
-      [[s*4.2,-0.6,-2.4],[s*2.2,-0.2,-2.0]].forEach(([tx,ty,tz])=>{
-        const tv=new THREE.Vector3(tx,ty,tz);
-        const fl=new THREE.Mesh(new THREE.CylinderGeometry(0.030,0.018,tv.length()*0.72,6),bMat);
-        fl.position.copy(tv.clone().multiplyScalar(0.36));
-        fl.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),tv.clone().normalize());
-        wg.add(fl);
+    try{
+      const wMat=new THREE.MeshStandardMaterial({
+        color:0x9a0808, side:THREE.DoubleSide, roughness:0.65, metalness:0.1,
+        emissive:new THREE.Color(0x380000), emissiveIntensity:0.55,
+        transparent:true, opacity:0.92,
       });
-    });
+      const bMat=new THREE.MeshStandardMaterial({color:0x100202,roughness:0.88});
+      [-1,1].forEach(s=>{
+        const wg=new THREE.Group();
+        wg.name=s>0?'wing_r':'wing_l';
+        wg.position.set(s*0.22,0.86,-0.10);
+        g.add(wg);
+        // 4-point wing membrane quad (two triangles, both sides)
+        const v=new Float32Array([
+          0,   0.0,  0.0,
+          s*5.0, 2.2,-0.1,
+          s*4.2,-0.6,-2.4,
+          s*0.1,-0.4,-2.3,
+        ]);
+        const geo=new THREE.BufferGeometry();
+        geo.setAttribute('position',new THREE.BufferAttribute(v,3));
+        geo.setIndex(new THREE.BufferAttribute(new Uint16Array([0,1,2, 0,2,3, 2,1,0, 3,2,0]),1));
+        geo.computeVertexNormals();
+        const wMesh=new THREE.Mesh(geo,wMat);
+        wMesh.castShadow=true; wg.add(wMesh);
+        // Main spar bone: root → tip
+        const tipV=new THREE.Vector3(s*5.0,2.2,-0.1);
+        const sparLen=tipV.length();
+        const spar=new THREE.Mesh(new THREE.CylinderGeometry(0.062,0.038,sparLen,7),bMat);
+        spar.position.copy(tipV.clone().multiplyScalar(0.5));
+        const up=new THREE.Vector3(0,1,0);
+        const tipN=tipV.clone().normalize();
+        if(Math.abs(up.dot(tipN))<0.9999) spar.quaternion.setFromUnitVectors(up,tipN);
+        spar.castShadow=true; wg.add(spar);
+        // Two trailing finger bones
+        [[s*4.2,-0.6,-2.4],[s*2.2,-0.2,-2.0]].forEach(([tx,ty,tz])=>{
+          const tv=new THREE.Vector3(tx,ty,tz);
+          const tvN=tv.clone().normalize();
+          const fl=new THREE.Mesh(new THREE.CylinderGeometry(0.030,0.018,tv.length()*0.72,6),bMat);
+          fl.position.copy(tv.clone().multiplyScalar(0.36));
+          if(Math.abs(up.dot(tvN))<0.9999) fl.quaternion.setFromUnitVectors(up,tvN);
+          wg.add(fl);
+        });
+      });
+    }catch(wingErr){ console.warn('Wings skipped:',wingErr); }
   }
 
   return g;
 }
 
 // ─── Player wolf ──────────────────────────────────────────────────────────────
-let wolf = makeWolf(wolfConfig);
+let wolf;
+try { wolf = makeWolf(wolfConfig); } catch(e){ console.error('makeWolf failed:',e); wolf = new THREE.Group(); }
 wolf.scale.setScalar(wolfConfig.scale * 1.15);
 scene.add(wolf);
 
@@ -2202,12 +2220,12 @@ document.getElementById('fly-btn').addEventListener('click', toggleFly);
 const flyMobileBtn=document.getElementById('btn-fly');
 if(flyMobileBtn) flyMobileBtn.addEventListener('touchstart',e=>{e.preventDefault();toggleFly();},{passive:false});
 
-// ─── Splash ───────────────────────────────────────────────────────────────────
+// ─── Splash (pointer lock wired here so it fires after game is ready) ─────────
 const splash = document.getElementById('splash');
 document.getElementById('start-btn').addEventListener('click',()=>{
   splash.classList.add('hidden');
-  if(!isMobile) canvas.requestPointerLock();
-  setTimeout(()=>splash.style.display='none',1100);
+  try { if(!isMobile) canvas.requestPointerLock(); } catch(e){}
+  setTimeout(()=>{ splash.style.display='none'; }, 1100);
 });
 
 // ─── Main Loop ────────────────────────────────────────────────────────────────
