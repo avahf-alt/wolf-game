@@ -947,6 +947,8 @@ const rivalPacks=RIVAL_PACK_CONFIGS.map(cfg=>{
   return {...cfg,wolves};
 });
 
+let playerAlliance = null; // null = own pack, or a rivalPack object when joined
+
 // ─── Heart particles ──────────────────────────────────────────────────────────
 const heartMat2 = new THREE.MeshBasicMaterial({ color:0xff4488, side:THREE.DoubleSide });
 const hearts = [];
@@ -1104,6 +1106,26 @@ function returnScout(){
   for(let i=0;i<count;i++) spawnPup();
   spawnHearts(player.pos); spawnHearts(nm.position);
   showNotif(`Your pup returned with a mate and ${count} new pups! Pack grows!`);
+  updatePackLabel();
+}
+
+function tryJoinPack(rp){
+  if(playerAlliance===rp){
+    showNotif(`You already run with the ${rp.name}.`); return;
+  }
+  if(playerAlliance) leaveEnemyPack(true);
+  playerAlliance=rp;
+  spawnHearts(player.pos);
+  showNotif(`You have joined the ${rp.name}! Their wolves follow you.`);
+  packLabel.textContent=`Pack: ${rp.name} · ${rp.wolves.length} wolves`;
+  mate.state='wander';
+}
+function leaveEnemyPack(silent=false){
+  if(!playerAlliance) return;
+  const name=playerAlliance.name;
+  playerAlliance=null;
+  if(!silent) showNotif(`You left the ${name} and returned to your own pack.`);
+  if(packState.mated) mate.state='follow';
   updatePackLabel();
 }
 
@@ -1779,16 +1801,17 @@ function drawMinimap(){
     mmCtx.fillStyle='rgba(255,160,200,0.75)'; mmCtx.fill();
   });
 
-  // Rival packs — blue circles with name
+  // Rival packs — blue (neutral) or green (allied)
   rivalPacks.forEach(rp=>{
     const [rpx,rpz]=wm(rp.x,rp.z);
+    const allied=playerAlliance===rp;
     if(inMM(rpx,rpz,12)){
-      mmCtx.beginPath(); mmCtx.arc(rpx,rpz,4,0,Math.PI*2);
-      mmCtx.fillStyle='rgba(140,180,255,0.85)'; mmCtx.fill();
-      mmCtx.beginPath(); mmCtx.arc(rpx,rpz,6,0,Math.PI*2);
-      mmCtx.strokeStyle='rgba(180,220,255,0.5)'; mmCtx.lineWidth=1; mmCtx.stroke();
-      mmCtx.fillStyle='rgba(200,230,255,0.65)'; mmCtx.font='6px sans-serif';
-      mmCtx.textAlign='center'; mmCtx.fillText(rp.name,rpx,rpz+11); mmCtx.textAlign='left';
+      mmCtx.beginPath(); mmCtx.arc(rpx,rpz,allied?5:4,0,Math.PI*2);
+      mmCtx.fillStyle=allied?'rgba(80,255,120,0.92)':'rgba(140,180,255,0.85)'; mmCtx.fill();
+      mmCtx.beginPath(); mmCtx.arc(rpx,rpz,allied?7:6,0,Math.PI*2);
+      mmCtx.strokeStyle=allied?'rgba(100,255,140,0.7)':'rgba(180,220,255,0.5)'; mmCtx.lineWidth=1; mmCtx.stroke();
+      mmCtx.fillStyle=allied?'rgba(140,255,160,0.85)':'rgba(200,230,255,0.65)'; mmCtx.font='6px sans-serif';
+      mmCtx.textAlign='center'; mmCtx.fillText((allied?'★ ':'')+rp.name,rpx,rpz+11); mmCtx.textAlign='left';
     }
   });
   // Pack mates — magenta dots
@@ -2094,15 +2117,43 @@ function updatePlayer(dt){
   if(touchState.howl&&!player.howling){ touchState.howl=false; triggerHowl(); }
   if(keys['Space']&&!player.howling&&!flying) triggerHowl();
   packState.eCooldown=Math.max(0,packState.eCooldown-dt);
-  if((keys['KeyF']&&!fWasDown)||touchState.bond){ fWasDown=true; touchState.bond=false; tryBondOrMate(); }
+  // F key — join rival pack, leave pack, or bond/mate
+  if((keys['KeyF']&&!fWasDown)||touchState.bond){
+    fWasDown=true; touchState.bond=false;
+    // Find nearest rival pack wolf within join range
+    let nearPack=null;
+    for(const rp of rivalPacks){
+      for(const w of rp.wolves){
+        if(w.mesh.position.distanceTo(player.pos)<10){ nearPack=rp; break; }
+      }
+      if(nearPack) break;
+    }
+    if(nearPack){
+      tryJoinPack(nearPack);
+    } else if(playerAlliance && mateMesh.position.distanceTo(player.pos)<BOND_RANGE*2){
+      leaveEnemyPack();
+    } else if(!playerAlliance){
+      tryBondOrMate();
+    }
+  }
   if(!keys['KeyF']) fWasDown=false;
   // Proximity prompt
   const mateDist=mateMesh.position.distanceTo(player.pos);
-  if(mateDist<BOND_RANGE&&notifTimer<=0){
-    if(!packState.mated&&packState.bondLevel<3) notifEl.textContent='Press F to bond with her';
-    else if(packState.mated&&!packState.pregnant) notifEl.textContent='Press F to start a litter';
-    else return;
-    notifEl.classList.add('show');
+  let shownPrompt=false;
+  // Rival pack join prompt
+  for(const rp of rivalPacks){
+    for(const w of rp.wolves){
+      if(w.mesh.position.distanceTo(player.pos)<10&&notifTimer<=0){
+        notifEl.textContent=playerAlliance===rp?`Running with the ${rp.name} · F near mate to leave`:`Press F to join the ${rp.name}`;
+        notifEl.classList.add('show'); shownPrompt=true; break;
+      }
+    }
+    if(shownPrompt) break;
+  }
+  if(!shownPrompt && mateDist<BOND_RANGE&&notifTimer<=0){
+    if(playerAlliance){ notifEl.textContent='Press F to leave '+playerAlliance.name+' and return home'; notifEl.classList.add('show'); }
+    else if(!packState.mated&&packState.bondLevel<3){ notifEl.textContent='Press F to bond with her'; notifEl.classList.add('show'); }
+    else if(packState.mated&&!packState.pregnant){ notifEl.textContent='Press F to start a litter'; notifEl.classList.add('show'); }
   }
   // Wolf mesh — crouch lowers body
   wolf.position.copy(player.pos); wolf.position.y -= player.crouching ? 1.05 : 0.72;
@@ -2159,6 +2210,7 @@ function respawn(){
   player.pos.set(0,terrainY(0,0)+1.8,0); player.vel.set(0,0,0);
   killsLabel.textContent='Kills: 0';
   packState.bondLevel=0;packState.mated=false;packState.pregnant=false;packState.gestationTimer=0;packState.scoutPup=null;packState.scoutTimer=0;
+  playerAlliance=null;
   packState.pups.forEach(p=>scene.remove(p.mesh)); packState.pups.length=0;
   packState.packMates.forEach(pm=>scene.remove(pm.mesh)); packState.packMates.length=0;
   mateMesh.position.set(mateStartX,terrainY(mateStartX,mateStartZ),mateStartZ);
@@ -2358,21 +2410,43 @@ function loop(now){
     updatePackMates(dt);
     updateHearts(dt);
     tickGestation(dt);
-    // Rival pack wander
-    rivalPacks.forEach(rp=>{
-      rp.wolves.forEach(w=>{
-        w.wanderAngle+=(Math.random()-0.5)*dt*0.6;
-        const spd=0.9;
-        const nx=w.mesh.position.x+Math.sin(w.wanderAngle)*spd*dt;
-        const nz=w.mesh.position.z+Math.cos(w.wanderAngle)*spd*dt;
-        const hdx=w.homeX-nx, hdz=w.homeZ-nz;
-        if(Math.sqrt(hdx*hdx+hdz*hdz)>9){ w.wanderAngle=Math.atan2(hdx,hdz); }
-        w.mesh.position.x=nx; w.mesh.position.z=nz;
-        w.mesh.position.y=terrainY(nx,nz)+0.05;
-        w.mesh.rotation.y=w.wanderAngle;
-        w.legPhase=(w.legPhase||0)+spd*dt*3.5;
-        ['leg0','leg2'].forEach(n=>{const l=w.mesh.getObjectByName(n);if(l)l.rotation.x=Math.sin(w.legPhase)*0.5;});
-        ['leg1','leg3'].forEach(n=>{const l=w.mesh.getObjectByName(n);if(l)l.rotation.x=-Math.sin(w.legPhase)*0.5;});
+    // Rival pack wander / allied follow
+    rivalPacks.forEach((rp,ri)=>{
+      const allied=playerAlliance===rp;
+      rp.wolves.forEach((w,wi)=>{
+        if(allied){
+          // Follow player in formation
+          const ox=((wi%3)-1)*3.5, oz=2.5+Math.floor(wi/3)*2.5;
+          const tx=player.pos.x+Math.sin(player.yaw)*-oz+Math.cos(player.yaw)*ox;
+          const tz=player.pos.z+Math.cos(player.yaw)*-oz-Math.sin(player.yaw)*ox;
+          const dx=tx-w.mesh.position.x, dz=tz-w.mesh.position.z;
+          const dist=Math.sqrt(dx*dx+dz*dz);
+          if(dist>1.2){
+            const spd=WOLF_SPEED*1.05;
+            w.mesh.position.x+=dx/dist*spd*dt; w.mesh.position.z+=dz/dist*spd*dt;
+            w.mesh.position.y=terrainY(w.mesh.position.x,w.mesh.position.z)+0.05;
+            w.mesh.rotation.y=Math.atan2(dx,dz);
+            w.legPhase=(w.legPhase||0)+spd*dt*3.5;
+            ['leg0','leg2'].forEach(n=>{const l=w.mesh.getObjectByName(n);if(l)l.rotation.x=Math.sin(w.legPhase)*0.65;});
+            ['leg1','leg3'].forEach(n=>{const l=w.mesh.getObjectByName(n);if(l)l.rotation.x=-Math.sin(w.legPhase)*0.65;});
+          }
+          const tail=w.mesh.getObjectByName('tail');
+          if(tail) tail.rotation.y=Math.sin(Date.now()*0.005+wi)*0.6;
+        } else {
+          // Normal wander
+          w.wanderAngle+=(Math.random()-0.5)*dt*0.6;
+          const spd=0.9;
+          const nx=w.mesh.position.x+Math.sin(w.wanderAngle)*spd*dt;
+          const nz=w.mesh.position.z+Math.cos(w.wanderAngle)*spd*dt;
+          const hdx=w.homeX-nx, hdz=w.homeZ-nz;
+          if(Math.sqrt(hdx*hdx+hdz*hdz)>9){ w.wanderAngle=Math.atan2(hdx,hdz); }
+          w.mesh.position.x=nx; w.mesh.position.z=nz;
+          w.mesh.position.y=terrainY(nx,nz)+0.05;
+          w.mesh.rotation.y=w.wanderAngle;
+          w.legPhase=(w.legPhase||0)+spd*dt*3.5;
+          ['leg0','leg2'].forEach(n=>{const l=w.mesh.getObjectByName(n);if(l)l.rotation.x=Math.sin(w.legPhase)*0.5;});
+          ['leg1','leg3'].forEach(n=>{const l=w.mesh.getObjectByName(n);if(l)l.rotation.x=-Math.sin(w.legPhase)*0.5;});
+        }
       });
     });
     updateDen(dt);
