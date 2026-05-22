@@ -86,11 +86,11 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
 renderer.toneMapping       = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.0;
+renderer.toneMappingExposure = 1.5;
 renderer.outputColorSpace  = THREE.SRGBColorSpace;
 
 const scene = new THREE.Scene();
-scene.fog   = new THREE.FogExp2(0x8da8b0, 0.007);
+scene.fog   = new THREE.FogExp2(0xb8d8ea, 0.007);
 
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 800);
 
@@ -106,10 +106,10 @@ window.addEventListener('resize', () => {
 });
 
 // ─── Lighting ─────────────────────────────────────────────────────────────────
-const ambientLight = new THREE.AmbientLight(0x445566, 0.5);
+const ambientLight = new THREE.AmbientLight(0x445566, 1.5);
 scene.add(ambientLight);
 
-const sun = new THREE.DirectionalLight(0xfff0d0, 3.0);
+const sun = new THREE.DirectionalLight(0xfff0d0, 4.5);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
 sun.shadow.camera.near = 1; sun.shadow.camera.far = 400;
@@ -121,7 +121,7 @@ scene.add(sun);
 const moonLight = new THREE.DirectionalLight(0x3050a0, 0.5);
 scene.add(moonLight);
 
-const hemi = new THREE.HemisphereLight(0x7090c0, 0x3a5530, 0.6);
+const hemi = new THREE.HemisphereLight(0x7090c0, 0x3a5530, 1.0);
 scene.add(hemi);
 
 // Fill light for soft shadows under canopy
@@ -989,7 +989,7 @@ function updateMate(dt){
 }
 
 // ─── Pack / Breeding ──────────────────────────────────────────────────────────
-const packState = { bondLevel:0, mated:false, pregnant:false, gestationTimer:0, pups:[], eCooldown:0 };
+const packState = { bondLevel:0, mated:false, pregnant:false, gestationTimer:0, pups:[], eCooldown:0, packMates:[], scoutPup:null, scoutTimer:0 };
 function updatePackLabel(){
   const alive=packState.pups.filter(p=>!p.dead).length;
   if(!packState.mated){ packLabel.textContent=packState.bondLevel===0?'Pack: Lone Wolf':`Pack: Bonding (${packState.bondLevel}/3)`;
@@ -1003,15 +1003,14 @@ function spawnPup(){
   const px=mateMesh.position.x+ox,pz=mateMesh.position.z+oz;
   mesh.position.set(px,terrainY(px,pz),pz);
   scene.add(mesh);
-  const pup={mesh,age:0,legPhase:0,dead:false,followOffset:new THREE.Vector3((Math.random()-0.5)*3,0,(Math.random()-0.5)*3)};
+  const pup={mesh,realAge:0,legPhase:0,dead:false,scouting:false,scoutTarget:null,followOffset:new THREE.Vector3((Math.random()-0.5)*3,0,(Math.random()-0.5)*3)};
   packState.pups.push(pup);
 }
 function updatePups(dt){
-  const dayFrac=dt/DAY_LENGTH;
   packState.pups.forEach(pup=>{
-    if(pup.dead) return;
-    pup.age+=dayFrac;
-    const growT=Math.min(1,pup.age/PUP_GROW_DAYS);
+    if(pup.dead||pup.scouting) return;
+    pup.realAge=(pup.realAge||0)+dt;
+    const growT=Math.min(1,pup.realAge/40);
     pup.mesh.scale.setScalar(0.45+growT*0.7);
     // Pups rest in den when player is inside, otherwise follow
     const followBase = (den.placed && !player.inDen) ? den.pos : player.pos;
@@ -1028,9 +1027,64 @@ function updatePups(dt){
       ['leg1','leg3'].forEach(n=>{const l=pup.mesh.getObjectByName(n);if(l)l.rotation.x=-Math.sin(pup.legPhase)*0.7;});
     }
     const tail=pup.mesh.getObjectByName('tail');
-    if(tail) tail.rotation.y=Math.sin(Date.now()*0.008+pup.age*10)*0.7;
+    if(tail) tail.rotation.y=Math.sin(Date.now()*0.008+pup.realAge*10)*0.7;
+  });
+  // Scout trigger: grown pup (40s) leaves to find a mate
+  if(!packState.scoutPup){
+    for(const pup of packState.pups){
+      if(pup.dead||pup.scouting) continue;
+      if((pup.realAge||0)>=40){
+        packState.scoutPup=pup; packState.scoutTimer=120;
+        pup.scouting=true; pup.mesh.visible=false;
+        const rp=rivalPacks[Math.floor(Math.random()*rivalPacks.length)];
+        pup.scoutTarget=rp;
+        showNotif(`Your pup has left for ${rp.name}! Returns in 2:00`);
+        break;
+      }
+    }
+  }
+}
+function updatePackMates(dt){
+  packState.packMates.forEach(pm=>{
+    const target=new THREE.Vector3().copy(player.pos).add(pm.followOffset);
+    const dx=target.x-pm.mesh.position.x, dz=target.z-pm.mesh.position.z;
+    const dist=Math.sqrt(dx*dx+dz*dz);
+    if(dist>2){
+      const spd=WOLF_SPEED*0.85;
+      pm.mesh.position.x+=dx/dist*spd*dt; pm.mesh.position.z+=dz/dist*spd*dt;
+      pm.mesh.position.y=terrainY(pm.mesh.position.x,pm.mesh.position.z)+0.05;
+      pm.mesh.rotation.y=Math.atan2(dx,dz);
+      pm.legPhase=(pm.legPhase||0)+spd*dt*3.5;
+      ['leg0','leg2'].forEach(n=>{const l=pm.mesh.getObjectByName(n);if(l)l.rotation.x=Math.sin(pm.legPhase)*0.65;});
+      ['leg1','leg3'].forEach(n=>{const l=pm.mesh.getObjectByName(n);if(l)l.rotation.x=-Math.sin(pm.legPhase)*0.65;});
+    }
+    const tail=pm.mesh.getObjectByName('tail');
+    if(tail) tail.rotation.y=Math.sin(Date.now()*0.003)*0.5;
   });
 }
+
+function returnScout(){
+  const sp=packState.scoutPup; packState.scoutPup=null;
+  sp.scouting=false; sp.mesh.visible=true;
+  sp.mesh.position.copy(player.pos).add(new THREE.Vector3(3,0,3));
+  sp.mesh.position.y=terrainY(sp.mesh.position.x,sp.mesh.position.z);
+  // New pack-mate wolf
+  const nm=makeWolf({preset:Math.floor(Math.random()*COAT_PRESETS.length),eyeIdx:Math.floor(Math.random()*EYE_COLORS.length)});
+  nm.scale.setScalar(1.0);
+  const mi=packState.packMates.length;
+  const mox=(mi%2===0?1:-1)*4, moz=3+mi*2;
+  nm.position.copy(player.pos).add(new THREE.Vector3(mox,0,moz));
+  nm.position.y=terrainY(nm.position.x,nm.position.z);
+  scene.add(nm);
+  packState.packMates.push({mesh:nm,followOffset:new THREE.Vector3(mox,0,moz),legPhase:0});
+  // New pups
+  const count=2+Math.floor(Math.random()*2);
+  for(let i=0;i<count;i++) spawnPup();
+  spawnHearts(player.pos); spawnHearts(nm.position);
+  showNotif(`Your pup returned with a mate and ${count} new pups! Pack grows!`);
+  updatePackLabel();
+}
+
 let fWasDown=false;
 function tryBondOrMate(){
   if(packState.eCooldown>0) return;
@@ -1056,13 +1110,24 @@ function tryBondOrMate(){
 }
 const pupLabel = document.getElementById('pup-label');
 function tickGestation(dt){
-  if(!packState.pregnant){ pupLabel.style.display='none'; return; }
+  // Scout countdown
+  if(packState.scoutPup){
+    packState.scoutTimer-=dt;
+    const m=Math.floor(Math.max(0,packState.scoutTimer)/60);
+    const s=Math.floor(Math.max(0,packState.scoutTimer)%60);
+    pupLabel.style.display='block';
+    pupLabel.textContent=`🐾 Pup seeking mate — ${m}:${String(s).padStart(2,'0')}`;
+    if(packState.scoutTimer<=0) returnScout();
+  }
+  if(!packState.pregnant){ if(!packState.scoutPup) pupLabel.style.display='none'; return; }
   packState.gestationTimer-=dt;
-  const daysLeft=Math.max(0,packState.gestationTimer/DAY_LENGTH);
+  const sLeft=Math.max(0,packState.gestationTimer);
+  const gm=Math.floor(sLeft/60), gs=Math.floor(sLeft%60);
   pupLabel.style.display='block';
-  pupLabel.textContent=`Expecting pups · ${daysLeft.toFixed(1)}d`;
+  pupLabel.textContent=`🐺 Pups coming in ${gm}:${String(gs).padStart(2,'0')}`;
   if(packState.gestationTimer<=0){
-    packState.pregnant=false; pupLabel.style.display='none';
+    packState.pregnant=false;
+    if(!packState.scoutPup) pupLabel.style.display='none';
     const count=2+Math.floor(Math.random()*3);
     for(let i=0;i<count;i++) spawnPup();
     spawnHearts(mateMesh.position);
