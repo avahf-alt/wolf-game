@@ -925,6 +925,28 @@ const mateStartX = 80+Math.random()*40, mateStartZ = 60+Math.random()*40;
 mateMesh.position.set(mateStartX, terrainY(mateStartX,mateStartZ), mateStartZ);
 scene.add(mateMesh);
 
+// ─── Rival Packs ──────────────────────────────────────────────────────────────
+const RIVAL_PACK_CONFIGS=[
+  {x:175,z:155,name:'East Ridge Pack'},
+  {x:-175,z:155,name:'North Forest Pack'},
+  {x:175,z:-165,name:'South Meadow Pack'},
+  {x:-110,z:165,name:'Moon Valley Pack'},
+];
+const rivalPacks=RIVAL_PACK_CONFIGS.map(cfg=>{
+  const wolves=[];
+  const count=2+Math.floor(Math.random()*2);
+  for(let i=0;i<count;i++){
+    const m=makeWolf({preset:Math.floor(Math.random()*COAT_PRESETS.length),eyeIdx:Math.floor(Math.random()*EYE_COLORS.length)});
+    const ox=(Math.random()-0.5)*10, oz=(Math.random()-0.5)*10;
+    const px=cfg.x+ox, pz=cfg.z+oz;
+    m.position.set(px,terrainY(px,pz),pz);
+    m.rotation.y=Math.random()*Math.PI*2;
+    scene.add(m);
+    wolves.push({mesh:m,homeX:px,homeZ:pz,wanderAngle:Math.random()*Math.PI*2,legPhase:0});
+  }
+  return {...cfg,wolves};
+});
+
 // ─── Heart particles ──────────────────────────────────────────────────────────
 const heartMat2 = new THREE.MeshBasicMaterial({ color:0xff4488, side:THREE.DoubleSide });
 const hearts = [];
@@ -993,7 +1015,7 @@ const packState = { bondLevel:0, mated:false, pregnant:false, gestationTimer:0, 
 function updatePackLabel(){
   const alive=packState.pups.filter(p=>!p.dead).length;
   if(!packState.mated){ packLabel.textContent=packState.bondLevel===0?'Pack: Lone Wolf':`Pack: Bonding (${packState.bondLevel}/3)`;
-  } else { const pts=['You','Mate'];if(alive>0)pts.push(`${alive} pup${alive>1?'s':''}`); packLabel.textContent='Pack: '+pts.join(' + '); }
+  } else { const pts=['You','Mate'];packState.packMates.forEach((_,i)=>pts.push(`Wolf ${i+2}`));if(alive>0)pts.push(`${alive} pup${alive>1?'s':''}`); packLabel.textContent='Pack: '+pts.join(' + '); }
 }
 function spawnPup(){
   const pIdx=Math.floor(Math.random()*COAT_PRESETS.length);
@@ -1100,13 +1122,11 @@ function tryBondOrMate(){
       updatePackLabel();
     }
   } else if(!packState.pregnant){
-    if(player.hunger<55){showNotif('Hunt first — you are too hungry.');return;}
-    if(player.thirst<40){showNotif('Drink first — you are too thirsty.');return;}
-    packState.pregnant=true; packState.gestationTimer=GESTATION_DAYS*DAY_LENGTH;
+    packState.pregnant=true; packState.gestationTimer=60;
     spawnHearts(mateMesh.position); spawnHearts(wolf.position);
-    showNotif('A new litter is on the way...');
+    showNotif('A new litter is on the way — pups in 1 minute!');
     updatePackLabel();
-  } else { showNotif('Pups are on the way. Be patient.'); }
+  } else { showNotif('Pups are on the way!'); }
 }
 const pupLabel = document.getElementById('pup-label');
 function tickGestation(dt){
@@ -1759,6 +1779,27 @@ function drawMinimap(){
     mmCtx.fillStyle='rgba(255,160,200,0.75)'; mmCtx.fill();
   });
 
+  // Rival packs — blue circles with name
+  rivalPacks.forEach(rp=>{
+    const [rpx,rpz]=wm(rp.x,rp.z);
+    if(inMM(rpx,rpz,12)){
+      mmCtx.beginPath(); mmCtx.arc(rpx,rpz,4,0,Math.PI*2);
+      mmCtx.fillStyle='rgba(140,180,255,0.85)'; mmCtx.fill();
+      mmCtx.beginPath(); mmCtx.arc(rpx,rpz,6,0,Math.PI*2);
+      mmCtx.strokeStyle='rgba(180,220,255,0.5)'; mmCtx.lineWidth=1; mmCtx.stroke();
+      mmCtx.fillStyle='rgba(200,230,255,0.65)'; mmCtx.font='6px sans-serif';
+      mmCtx.textAlign='center'; mmCtx.fillText(rp.name,rpx,rpz+11); mmCtx.textAlign='left';
+    }
+  });
+  // Pack mates — magenta dots
+  packState.packMates.forEach(pm=>{
+    const [pmx,pmz]=wm(pm.mesh.position.x,pm.mesh.position.z);
+    if(inMM(pmx,pmz)){
+      mmCtx.beginPath(); mmCtx.arc(pmx,pmz,3,0,Math.PI*2);
+      mmCtx.fillStyle='rgba(255,100,220,0.88)'; mmCtx.fill();
+    }
+  });
+
   // Hunter wolves — red (prey mode)
   if(preyMode){
     hunterWolves.forEach(h=>{
@@ -2100,10 +2141,10 @@ function updatePlayer(dt){
   lookTarget.set(player.pos.x,player.pos.y+0.8,player.pos.z);
   camera.lookAt(lookTarget);
   // HUD
-  healthFill.style.width =player.health +'%';
-  hungerFill.style.width =player.hunger +'%';
-  thirstFill.style.width =player.thirst +'%';
-  staminaFill.style.width=player.stamina+'%';
+  if(healthFill) healthFill.style.width =player.health +'%';
+  if(hungerFill) hungerFill.style.width =player.hunger +'%';
+  if(thirstFill) thirstFill.style.width =player.thirst +'%';
+  if(staminaFill) staminaFill.style.width=player.stamina+'%';
   document.getElementById('stalk-label').style.display  = player.crouching&&!player.inDen?'block':'none';
   document.getElementById('den-label').style.display    = player.inDen?'block':'none';
   document.getElementById('pounce-label').style.display = player.pounceReady?'block':'none';
@@ -2117,8 +2158,9 @@ function respawn(){
   player.kills=0;player.day=1;player.dead=false;
   player.pos.set(0,terrainY(0,0)+1.8,0); player.vel.set(0,0,0);
   killsLabel.textContent='Kills: 0';
-  packState.bondLevel=0;packState.mated=false;packState.pregnant=false;packState.gestationTimer=0;
+  packState.bondLevel=0;packState.mated=false;packState.pregnant=false;packState.gestationTimer=0;packState.scoutPup=null;packState.scoutTimer=0;
   packState.pups.forEach(p=>scene.remove(p.mesh)); packState.pups.length=0;
+  packState.packMates.forEach(pm=>scene.remove(pm.mesh)); packState.packMates.length=0;
   mateMesh.position.set(mateStartX,terrainY(mateStartX,mateStartZ),mateStartZ);
   mate.state='wander'; pupLabel.style.display='none'; updatePackLabel();
   // Reset prey mode
@@ -2313,8 +2355,26 @@ function loop(now){
     hunterWolves.forEach(h=>h.update(dt,player.pos));
     updateMate(dt);
     updatePups(dt);
+    updatePackMates(dt);
     updateHearts(dt);
     tickGestation(dt);
+    // Rival pack wander
+    rivalPacks.forEach(rp=>{
+      rp.wolves.forEach(w=>{
+        w.wanderAngle+=(Math.random()-0.5)*dt*0.6;
+        const spd=0.9;
+        const nx=w.mesh.position.x+Math.sin(w.wanderAngle)*spd*dt;
+        const nz=w.mesh.position.z+Math.cos(w.wanderAngle)*spd*dt;
+        const hdx=w.homeX-nx, hdz=w.homeZ-nz;
+        if(Math.sqrt(hdx*hdx+hdz*hdz)>9){ w.wanderAngle=Math.atan2(hdx,hdz); }
+        w.mesh.position.x=nx; w.mesh.position.z=nz;
+        w.mesh.position.y=terrainY(nx,nz)+0.05;
+        w.mesh.rotation.y=w.wanderAngle;
+        w.legPhase=(w.legPhase||0)+spd*dt*3.5;
+        ['leg0','leg2'].forEach(n=>{const l=w.mesh.getObjectByName(n);if(l)l.rotation.x=Math.sin(w.legPhase)*0.5;});
+        ['leg1','leg3'].forEach(n=>{const l=w.mesh.getObjectByName(n);if(l)l.rotation.x=-Math.sin(w.legPhase)*0.5;});
+      });
+    });
     updateDen(dt);
     updateSky(dt);
     // Berry regen
